@@ -7,17 +7,27 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialMode?: 'login' | 'register';
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess, initialMode = 'register' }) => {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setMode(initialMode);
+    setError(null);
+    setMessage(null);
+    setPassword('');
+    setConfirmPassword('');
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -39,35 +49,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setMessage(null);
 
     if (!email) {
-      setError('Email/Username is required.');
+      setError('Email or admin username is required.');
       return;
     }
 
     let targetEmail = email.trim();
-    
-    // Server-side check for admin
+
     if (!targetEmail.includes('@') && mode !== 'forgot') {
       try {
         setLoading(true);
         const res = await fetch('/api/auth/admin-login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: targetEmail, password })
+          body: JSON.stringify({ username: targetEmail, password }),
         });
-        
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.email) {
           targetEmail = data.email;
         } else {
-          setError(data.message || 'Please enter a valid email address.');
+          setError(data.message || 'Invalid admin username or password.');
           setLoading(false);
           return;
         }
-      } catch (err) {
-        setError('Server error during authentication.');
+      } catch {
+        setError('Admin sign-in is unavailable. Try again in a moment.');
         setLoading(false);
         return;
       }
+    }
+
+    if (!targetEmail.includes('@')) {
+      setError('Please enter a valid email address.');
+      return;
     }
 
     if (mode === 'forgot') {
@@ -224,7 +237,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           {/* Form */}
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Email or Username</label>
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Email or admin username</label>
               <div className="relative">
                 <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-3.5" />
                 <input
@@ -233,7 +246,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@university.edu"
+                  placeholder="you@email.com"
                   className="w-full pl-10 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm text-gray-900 font-medium placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/50 shadow-sm"
                 />
               </div>
