@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connection validation
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    // Users and their subcollections (quiz sessions)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwnerOrAdmin(userId);
+      allow list: if isAdmin();
+      allow create, update: if isValidId(userId) && isOwnerOrAdmin(userId);
+      allow delete: if isAdmin();
+
+      match /quizSessions/{sessionId} {
+        allow get: if isValidId(userId) && isValidId(sessionId) && isOwnerOrAdmin(userId);
+        allow list: if isValidId(userId) && isOwnerOrAdmin(userId);
+        allow create, update, delete: if isValidId(userId) && isValidId(sessionId) && isOwnerOrAdmin(userId);
+      }
+    }
+
+    // Study Documents
+    match /documents/{documentId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(documentId);
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(documentId);
+
+      // Page-aware document chunks for RAG
+      match /chunks/{chunkId} {
+        allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+        allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(chunkId);
+        allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(chunkId);
+      }
+    }
+
+    // Quizzes
+    match /quizzes/{quizId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(quizId);
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(quizId);
+    }
+
+    // Quiz Attempts
+    match /attempts/{attemptId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(attemptId);
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(attemptId);
+    }
+
+    // Flashcards
+    match /flashcards/{cardId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(cardId);
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(cardId);
+    }
+
+    // Tutor Conversations
+    match /conversations/{conversationId} {
+      allow get: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid && isValidId(conversationId);
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidId(conversationId);
+    }
+  }
+}

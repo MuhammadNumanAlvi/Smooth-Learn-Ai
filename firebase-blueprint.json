@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered student user profile",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "createdAt"]
+    },
+    "DocumentItem": {
+      "title": "DocumentItem",
+      "description": "Uploaded study document / textbook",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 300 },
+        "fileName": { "type": "string", "maxLength": 300 },
+        "fileSize": { "type": "string" },
+        "uploadDate": { "type": "string" },
+        "pageCount": { "type": "number" },
+        "summary": { "type": "string" },
+        "extractedContent": { "type": "string" },
+        "overallDifficulty": { "type": "string" },
+        "totalQuizzesGenerated": { "type": "number" }
+      },
+      "required": ["id", "userId", "title", "fileName", "uploadDate"]
+    },
+    "DocumentChunk": {
+      "title": "DocumentChunk",
+      "description": "Page-aware chunk with embeddings for semantic RAG retrieval",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookId": { "type": "string" },
+        "userId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "chapterTitle": { "type": "string" },
+        "sectionId": { "type": "string" },
+        "pageNumber": { "type": "number" },
+        "chunkIndex": { "type": "number" },
+        "text": { "type": "string" }
+      },
+      "required": ["id", "bookId", "userId", "pageNumber", "chunkIndex", "text"]
+    },
+    "QuizSession": {
+      "title": "QuizSession",
+      "description": "Real-time persistent quiz session tracked per user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "bookId": { "type": "string" },
+        "chapterId": { "type": "string" },
+        "sectionId": { "type": "string" },
+        "currentQuestionIndex": { "type": "number" },
+        "score": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "incorrectCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["in_progress", "completed", "abandoned"] },
+        "startedAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "completedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "bookId", "status", "startedAt"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "Generated study quiz with validated questions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "documentId": { "type": "string" },
+        "documentTitle": { "type": "string" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "questionType": { "type": "string" },
+        "difficulty": { "type": "string" }
+      },
+      "required": ["id", "userId", "documentId", "title", "createdAt"]
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "Graded attempt record for completed quizzes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "quizId": { "type": "string" },
+        "documentId": { "type": "string" },
+        "documentTitle": { "type": "string" },
+        "quizTitle": { "type": "string" },
+        "date": { "type": "string" },
+        "score": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "totalCount": { "type": "number" },
+        "timeSpentSeconds": { "type": "number" }
+      },
+      "required": ["id", "userId", "quizId", "score", "correctCount", "totalCount", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document"
+    },
+    "/users/{userId}/quizSessions/{sessionId}": {
+      "schema": "QuizSession",
+      "description": "Active and past quiz sessions of a user"
+    },
+    "/documents/{documentId}": {
+      "schema": "DocumentItem",
+      "description": "Study documents uploaded by users"
+    },
+    "/documents/{documentId}/chunks/{chunkId}": {
+      "schema": "DocumentChunk",
+      "description": "Vector indexed text chunks with page metadata"
+    },
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Generated quizzes stored in Firestore"
+    },
+    "/attempts/{attemptId}": {
+      "schema": "QuizAttempt",
+      "description": "Historical quiz attempts for analytics"
+    }
+  }
+}

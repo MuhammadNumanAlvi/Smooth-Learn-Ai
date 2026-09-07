@@ -1,0 +1,6 @@
+{
+  "name": "QuizMind AI",
+  "description": "Production AI-powered PDF study and quiz SaaS with intelligent chapter extraction, customizable multi-format quizzes, instant grading, and conversational document tutor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
