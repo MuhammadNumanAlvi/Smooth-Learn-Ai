@@ -3,6 +3,7 @@ import { PDFParse } from "pdf-parse";
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './server/db';
+import { getAdminEmail, getAdminUsername, isAdminEmail } from './server/admin';
 import { firestoreService } from './server/firestore';
 import * as aiEngine from './server/aiEngine';
 import { chunkDocumentText, indexDocumentChunks, retrieveRelevantContext } from './server/rag';
@@ -64,16 +65,16 @@ export async function createApp() {
   // Admin Server-Side Authentication Check
   app.post('/api/auth/admin-login', express.json(), (req, res) => {
     const { username, password } = req.body;
-    
-    // Server-side validation of admin credentials
-    const adminUser = (process.env.ADMIN_USERNAME || 'saasproduct').toLowerCase();
+    const identifier = String(username || '').trim().toLowerCase();
+    const adminUser = getAdminUsername();
     const adminPass = process.env.ADMIN_PASSWORD || '';
-    const adminEmail = process.env.ADMIN_EMAIL || 'saasproduct@admin.pk';
-    if (adminPass && username?.toLowerCase() === adminUser && password === adminPass) {
-      return res.json({ 
-        success: true, 
+    const adminEmail = getAdminEmail();
+    const idMatches = identifier === adminUser || identifier === adminEmail;
+    if (adminPass && idMatches && password === adminPass) {
+      return res.json({
+        success: true,
         email: adminEmail,
-        role: 'admin'
+        role: 'admin',
       });
     }
     
@@ -95,7 +96,7 @@ export async function createApp() {
         email: typeof email === 'string' ? email : '',
         displayName: typeof displayName === 'string' ? displayName : '',
         photoURL: typeof photoURL === 'string' ? photoURL : '',
-        role: email === 'saasproduct@admin.pk' ? 'admin' : 'student',
+        role: isAdminEmail(email) ? 'admin' : 'student',
       });
       res.json({ success: true, data: saved });
     } catch (err: any) {
@@ -1103,7 +1104,6 @@ export async function createApp() {
   });
 
   // ─── Admin API Endpoints ───────────────────────────────────────────────────
-  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'saasproduct@admin.pk';
   const isAdmin = (req: express.Request): boolean => {
     const uid = getUserId(req);
     const adminToken = process.env.ADMIN_API_TOKEN || '';

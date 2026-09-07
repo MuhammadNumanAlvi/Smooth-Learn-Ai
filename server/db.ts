@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { isAdminEmail } from './admin';
 import {
   DocumentItem,
   Quiz,
@@ -730,7 +731,7 @@ export const db = {
       email: profile.email || '',
       displayName: profile.displayName || profile.fullName || '',
       photoURL: profile.photoURL || '',
-      role: profile.role || (profile.email === 'saasproduct@admin.pk' ? 'admin' : 'student'),
+      role: profile.role || (isAdminEmail(profile.email) ? 'admin' : 'student'),
       fullName: profile.fullName || '',
       phone: profile.phone || '',
       school: profile.school || '',

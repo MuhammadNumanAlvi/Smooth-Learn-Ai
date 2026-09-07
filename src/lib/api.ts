@@ -9,6 +9,7 @@ import {
   SourceReference,
   TutorConversation,
 } from '../types';
+import { isAdminEmail } from './admin';
 import { auth } from './firebase';
 
 function getAuthHeaders(): Record<string, string> {
@@ -359,7 +360,7 @@ export const api = {
         email: user.email || '',
         displayName: user.displayName || '',
         photoURL: user.photoURL || '',
-        role: user.email === 'saasproduct@admin.pk' ? 'admin' : 'student',
+        role: isAdminEmail(user.email) ? 'admin' : 'student',
       }),
     }).catch(() => {});
   },

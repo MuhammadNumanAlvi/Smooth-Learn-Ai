@@ -10,6 +10,7 @@ import {
   getDocFromServer,
   deleteDoc,
 } from 'firebase/firestore';
+import { isAdminEmail } from './admin';
 import { auth, firestore } from './firebase';
 import { QuizSession, QuizAttempt, Quiz, DocumentItem, Flashcard, PlatformUser } from '../types';
 
@@ -147,13 +148,13 @@ export async function syncUserToFirestore(user: any): Promise<void> {
         photoURL: user.photoURL || '',
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
-        role: user.email === 'saasproduct@admin.pk' ? 'admin' : 'student',
+        role: isAdminEmail(user.email) ? 'admin' : 'student',
       });
     } else {
       // Just update login time, only force admin if it's the super admin email
       await setDoc(userRef, {
         lastLoginAt: new Date().toISOString(),
-        ...(user.email === 'saasproduct@admin.pk' ? { role: 'admin' } : {})
+        ...(isAdminEmail(user.email) ? { role: 'admin' } : {})
       }, { merge: true });
     }
   } catch (error) {

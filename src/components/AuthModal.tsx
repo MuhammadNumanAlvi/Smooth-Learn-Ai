@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, Sparkles, Loader2, AlertCircle, User, Phone, GraduationCap, Building2, MapPin } from 'lucide-react';
 import { updateProfile } from 'firebase/auth';
+import { isAdminEmail } from '../lib/admin';
 import { auth, loginWithEmail, registerWithEmail, loginWithGoogle, setRememberMe } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -42,7 +43,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   if (!isOpen) return null;
 
   const identifier = email.trim();
-  const isAdminLogin = mode === 'login' && identifier.length > 0 && !identifier.includes('@');
+  const isAdminLogin =
+    mode === 'login' && identifier.length > 0 && (!identifier.includes('@') || isAdminEmail(identifier));
 
   const getFriendlyErrorMessage = (err: any): string => {
     const errCode = err?.code || '';
@@ -61,7 +63,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     onSuccess();
   };
 
+  const signInAdminFirebase = async (adminEmail: string) => {
+    await setRememberMe(rememberMe);
+    try {
+      await loginWithEmail(adminEmail, password);
+    } catch (err: any) {
+      if (err?.code?.includes('user-not-found') || err?.code?.includes('invalid-credential')) {
+        try {
+          await registerWithEmail(adminEmail, password);
+        } catch (registerErr: any) {
+          if (registerErr?.code?.includes('email-already-in-use')) {
+            throw new Error('Admin account exists with a different password. Use the current admin password.');
+          }
+          throw registerErr;
+        }
+      } else {
+        throw err;
+      }
+    }
+    onClose();
+    navigate('/admin');
+  };
+
   const handleAdminLogin = async () => {
+    if (isAdminEmail(identifier)) {
+      await signInAdminFirebase(identifier);
+      return;
+    }
+
     const res = await fetch('/api/auth/admin-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -71,17 +100,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     if (!data.success || !data.email) {
       throw new Error(data.message || 'Invalid admin credentials.');
     }
-    try {
-      await loginWithEmail(data.email, password);
-    } catch (err: any) {
-      if (err?.code?.includes('user-not-found') || err?.code?.includes('invalid-credential')) {
-        await registerWithEmail(data.email, password);
-      } else {
-        throw err;
-      }
-    }
-    onClose();
-    navigate('/admin');
+    await signInAdminFirebase(data.email);
   };
 
   const handleStudentLogin = async () => {
@@ -94,6 +113,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   };
 
   const handleRegister = async () => {
+    if (isAdminEmail(identifier)) {
+      throw new Error('This email is reserved for admin. Use Sign In instead.');
+    }
     if (!fullName.trim() || !identifier.includes('@') || !phone.trim() || !school.trim() || !grade.trim()) {
       throw new Error('Please fill in all required student details.');
     }

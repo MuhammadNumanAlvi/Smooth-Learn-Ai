@@ -32,11 +32,11 @@ service cloud.firestore {
     }
 
     match /otpCodes/{id} {
-      allow read, write: if isSignedIn() && request.auth.token.email == 'saasproduct@admin.pk';
+      allow read, write: if isSignedIn() && request.auth.token.email == 'nomiadmin3535@gmail.com';
     }
 
     match /studentUnlock/{id} {
-      allow read, write: if isSignedIn() && request.auth.token.email == 'saasproduct@admin.pk';
+      allow read, write: if isSignedIn() && request.auth.token.email == 'nomiadmin3535@gmail.com';
     }
 
     // Users and their subcollections (quiz sessions)

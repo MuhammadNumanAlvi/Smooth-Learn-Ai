@@ -26,6 +26,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { ADMIN_EMAIL, isAdminEmail } from '../lib/admin';
 import { auth, firestore } from '../lib/firebase';
 import { api } from '../lib/api';
 import { signOut } from 'firebase/auth';
@@ -78,7 +79,7 @@ export const AdminDashboard: React.FC = () => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (!user) {
         navigate('/');
-      } else if (user.email !== 'saasproduct@admin.pk') {
+      } else if (!isAdminEmail(user.email)) {
         navigate('/dashboard');
       } else {
         loadData();
@@ -314,7 +315,7 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="mt-auto px-4 py-4 rounded-2xl bg-white/60 border border-[#f0ece1]">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Logged in as</p>
-              <p className="text-xs font-bold text-gray-900 truncate">saasproduct@admin.pk</p>
+              <p className="text-xs font-bold text-gray-900 truncate">{ADMIN_EMAIL}</p>
               <p className="text-[10px] text-indigo-600 font-bold mt-0.5">Super Admin</p>
             </div>
           </nav>

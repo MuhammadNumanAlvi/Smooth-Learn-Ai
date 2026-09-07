@@ -1,0 +1,9 @@
+export const ADMIN_EMAIL = String(
+  import.meta.env.VITE_ADMIN_EMAIL || 'nomiadmin3535@gmail.com'
+)
+  .trim()
+  .toLowerCase();
+
+export function isAdminEmail(email?: string | null): boolean {
+  return String(email || '').trim().toLowerCase() === ADMIN_EMAIL;
+}

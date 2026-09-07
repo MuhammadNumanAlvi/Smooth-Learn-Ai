@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './lib/firebase';
+import { isAdminEmail } from './lib/admin';
 import { syncUserToFirestore } from './lib/firestoreClient';
 import { api } from './lib/api';
 import { Dashboard } from './pages/Dashboard';
@@ -58,7 +59,7 @@ export function App() {
           path="/"
           element={
             user
-              ? user.email === 'saasproduct@admin.pk'
+              ? isAdminEmail(user.email)
                 ? <Navigate to="/admin" replace />
                 : <Navigate to="/dashboard" replace />
               : <LandingPage />
@@ -68,13 +69,22 @@ export function App() {
           path="/dashboard"
           element={
             user
-              ? user.email === 'saasproduct@admin.pk'
+              ? isAdminEmail(user.email)
                 ? <Navigate to="/admin" replace />
                 : <Dashboard />
               : <Navigate to="/" replace />
           }
         />
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route
+          path="/admin"
+          element={
+            user
+              ? isAdminEmail(user.email)
+                ? <AdminDashboard />
+                : <Navigate to="/dashboard" replace />
+              : <Navigate to="/" replace />
+          }
+        />
         <Route
           path="/student"
           element={user ? <Dashboard /> : <Navigate to="/" replace />}

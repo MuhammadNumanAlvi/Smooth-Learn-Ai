@@ -25,9 +25,10 @@ Open http://localhost:3000
 | `AI_PROVIDER` | Recommended | `groq` or `gemini` |
 | `GROQ_MODEL` | Optional | Default `openai/gpt-oss-20b` |
 | `GEMINI_MODEL` | Optional | Default `gemini-3.6-flash` |
-| `ADMIN_EMAIL` | Optional | Admin Firebase email |
+| `ADMIN_EMAIL` | Optional | Admin Firebase email (default `nomiadmin3535@gmail.com`) |
 | `ADMIN_USERNAME` | Optional | Username login |
 | `ADMIN_PASSWORD` | Optional | Username login password |
+| `VITE_ADMIN_EMAIL` | Optional | Same admin email for the web app |
 | `VITE_FIREBASE_*` | Optional | Overrides `firebase-applet-config.json` |
 
 4. In Firebase Console → Authentication → Settings → Authorized domains, add your `*.vercel.app` domain (and custom domain if any).

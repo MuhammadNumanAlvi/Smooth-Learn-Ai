@@ -29,6 +29,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { DocumentItem, Quiz, QuizAttempt, StudyAnalytics, QuizSession } from '../types';
+import { isAdminEmail } from '../lib/admin';
 import { api } from '../lib/api';
 import { ensureSignedIn, auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -325,7 +326,7 @@ export function Dashboard() {
                   <img src={auth.currentUser?.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser?.email || 'Student'}&background=random`} alt="User" className="w-9 h-9 rounded-full bg-gray-200 object-cover" />
                   <span className="text-sm font-medium text-gray-700">{auth.currentUser?.displayName || 'Student'}</span>
                 </div>
-                {auth.currentUser?.email === 'saasproduct@admin.pk' && (
+                {isAdminEmail(auth.currentUser?.email) && (
                   <button
                     onClick={() => navigate('/admin')}
                     className="px-3 py-2 rounded-full bg-white border border-gray-100 text-xs font-bold text-indigo-600 hover:bg-indigo-50"

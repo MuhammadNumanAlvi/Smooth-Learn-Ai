@@ -15,6 +15,7 @@ import {
   LogIn,
 } from 'lucide-react';
 import { DocumentItem } from '../types';
+import { isAdminEmail } from '../lib/admin';
 import { auth, logoutUser, subscribeToAuth } from '../lib/firebase';
 import { getUserRole } from '../lib/firestoreClient';
 import { useNavigate } from 'react-router-dom';
@@ -52,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       setCurrentUser(user);
       if (user && !user.isAnonymous) {
         const role = await getUserRole(user.uid);
-        setIsAdmin(role === 'admin');
+        setIsAdmin(role === 'admin' || isAdminEmail(user.email));
       } else {
         setIsAdmin(false);
       }
