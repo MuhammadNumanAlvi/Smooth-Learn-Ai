@@ -14,15 +14,6 @@ import {
   testProviderConnection,
 } from './server/aiProviders';
 import { AISettings, DocumentItem, Quiz, QuizSession, QuizAttempt, Flashcard } from './src/types';
-import {
-  generateOtp,
-  isAdminEmail,
-  saveStudentUnlock,
-  sendLoginCodeEmail,
-  storeOtp,
-  unlockStudentPassword,
-  verifyStoredOtp,
-} from './server/studentAuth';
 
 dotenv.config();
 
@@ -115,11 +106,11 @@ export async function createApp() {
   app.post('/api/auth/student/register', async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { email, password, fullName, phone, school, grade, city } = req.body || {};
+      const { email, fullName, phone, school, grade, city } = req.body || {};
       if (!userId || userId === 'default-user') {
         return res.status(401).json({ success: false, error: 'Sign up first, then we can save your profile.' });
       }
-      if (!email || !password || !fullName || !phone || !school || !grade) {
+      if (!email || !fullName || !phone || !school || !grade) {
         return res.status(400).json({ success: false, error: 'Please complete all required student details.' });
       }
       const profile = {
@@ -129,7 +120,6 @@ export async function createApp() {
         grade: String(grade).trim(),
         city: String(city || '').trim(),
       };
-      await saveStudentUnlock(String(email), String(password), profile);
       const saved = db.upsertUser({
         uid: userId,
         email: String(email).trim(),
@@ -142,43 +132,6 @@ export async function createApp() {
         role: 'student',
       });
       res.json({ success: true, data: saved });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/auth/otp/send', async (req, res) => {
-    try {
-      const email = String(req.body?.email || '').trim().toLowerCase();
-      if (!email.includes('@')) {
-        return res.status(400).json({ success: false, error: 'Enter the email you used to create your account.' });
-      }
-      if (isAdminEmail(email)) {
-        return res.status(400).json({ success: false, error: 'Admin accounts sign in with username and password.' });
-      }
-      const code = generateOtp();
-      await storeOtp(email, code);
-      await sendLoginCodeEmail(email, code);
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ success: false, error: err.message || 'Could not send login code.' });
-    }
-  });
-
-  app.post('/api/auth/otp/verify', async (req, res) => {
-    try {
-      const email = String(req.body?.email || '').trim().toLowerCase();
-      const code = String(req.body?.code || '').trim();
-      const check = await verifyStoredOtp(email, code);
-      if (!check.ok) return res.status(400).json({ success: false, error: check.error });
-      const password = await unlockStudentPassword(email);
-      if (!password) {
-        return res.status(400).json({
-          success: false,
-          error: 'No student account found for this email. Please create an account first.',
-        });
-      }
-      res.json({ success: true, data: { password } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

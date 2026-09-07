@@ -332,30 +332,8 @@ export const api = {
     return json.data;
   },
 
-  async sendStudentOtp(email: string): Promise<void> {
-    const res = await fetch('/api/auth/otp/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Failed to send login code');
-  },
-
-  async verifyStudentOtp(email: string, code: string): Promise<{ password: string }> {
-    const res = await fetch('/api/auth/otp/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code }),
-    });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Invalid login code');
-    return json.data;
-  },
-
-  async registerStudentVault(payload: {
+  async saveStudentAccount(payload: {
     email: string;
-    password: string;
     fullName: string;
     phone: string;
     school: string;
