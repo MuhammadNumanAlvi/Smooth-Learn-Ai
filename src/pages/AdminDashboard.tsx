@@ -259,7 +259,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div>
               <h1 className="text-lg font-black text-gray-900 leading-none">Admin Portal</h1>
-              <p className="text-[11px] font-bold text-gray-400 tracking-wide uppercase mt-0.5">QuizMind AI • Control Center</p>
+              <p className="text-[11px] font-bold text-gray-400 tracking-wide uppercase mt-0.5">Smooth Learn • Control Center</p>
             </div>
             {/* Live badge */}
             <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full">

@@ -332,6 +332,45 @@ export const api = {
     return json.data;
   },
 
+  async sendStudentOtp(email: string): Promise<void> {
+    const res = await fetch('/api/auth/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to send login code');
+  },
+
+  async verifyStudentOtp(email: string, code: string): Promise<{ password: string }> {
+    const res = await fetch('/api/auth/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Invalid login code');
+    return json.data;
+  },
+
+  async registerStudentVault(payload: {
+    email: string;
+    password: string;
+    fullName: string;
+    phone: string;
+    school: string;
+    grade: string;
+    city?: string;
+  }): Promise<void> {
+    const res = await fetch('/api/auth/student/register', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.error || 'Failed to save student profile');
+  },
+
   async syncCurrentUser(): Promise<void> {
     const user = auth.currentUser;
     if (!user) return;
@@ -342,6 +381,7 @@ export const api = {
         email: user.email || '',
         displayName: user.displayName || '',
         photoURL: user.photoURL || '',
+        role: user.email === 'saasproduct@admin.pk' ? 'admin' : 'student',
       }),
     }).catch(() => {});
   },

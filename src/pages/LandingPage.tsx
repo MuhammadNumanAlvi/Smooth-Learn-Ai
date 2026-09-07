@@ -88,7 +88,7 @@ export function LandingPage() {
             <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center border border-teal-100">
               <Brain className="w-4 h-4" />
             </div>
-            <span className="text-lg font-black tracking-tight text-gray-900">QuizMind AI</span>
+            <span className="text-lg font-black tracking-tight text-gray-900">Smooth Learn</span>
           </a>
           <div className="hidden md:flex items-center gap-6 text-sm font-bold text-gray-600">
             <a href="#how-it-works" className="hover:text-gray-900">How it works</a>
@@ -131,7 +131,7 @@ export function LandingPage() {
             </span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-600 font-medium leading-relaxed">
-            QuizMind AI turns a textbook PDF into chapters, quizzes, flashcards, and a tutor that only answers from
+            Smooth Learn turns a textbook PDF into chapters, quizzes, flashcards, and a tutor that only answers from
             <strong className="text-gray-800"> your</strong> book. Create a free account, upload once, then practice until you are ready.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -304,15 +304,10 @@ export function LandingPage() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 text-sm">
           <div className="flex items-center gap-2 font-extrabold text-gray-900">
             <Brain className="w-4 h-4 text-teal-600" />
-            QuizMind AI
+            Smooth Learn
           </div>
           <p className="text-gray-400 font-medium">A book-based study app for students</p>
-          <div className="flex items-center gap-4 text-gray-400">
-            <button type="button" onClick={() => openAuth('login')} className="hover:text-gray-700 font-medium">
-              Admin sign in
-            </button>
-            <span>© {new Date().getFullYear()}</span>
-          </div>
+          <span className="text-gray-400">© {new Date().getFullYear()}</span>
         </div>
       </footer>
 

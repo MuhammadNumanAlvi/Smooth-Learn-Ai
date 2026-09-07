@@ -90,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-xl font-bold tracking-tight text-slate-900 font-sans">
-                  QuizMind<span className="text-indigo-600">AI</span>
+                  Smooth Learn
                 </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                   RAG SaaS

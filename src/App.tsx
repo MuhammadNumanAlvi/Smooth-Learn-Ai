@@ -45,7 +45,7 @@ export function App() {
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-xl shadow-indigo-500/30 animate-pulse">
             <Brain className="w-7 h-7 text-white" />
           </div>
-          <p className="text-zinc-500 text-sm font-medium tracking-wide">Loading QuizMind AI...</p>
+          <p className="text-zinc-500 text-sm font-medium tracking-wide">Loading Smooth Learn...</p>
         </div>
       </div>
     );

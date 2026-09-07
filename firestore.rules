@@ -31,6 +31,14 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    match /otpCodes/{id} {
+      allow read, write: if isSignedIn() && request.auth.token.email == 'saasproduct@admin.pk';
+    }
+
+    match /studentUnlock/{id} {
+      allow read, write: if isSignedIn() && request.auth.token.email == 'saasproduct@admin.pk';
+    }
+
     // Users and their subcollections (quiz sessions)
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwnerOrAdmin(userId);

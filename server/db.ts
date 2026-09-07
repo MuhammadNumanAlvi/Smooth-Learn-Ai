@@ -716,6 +716,11 @@ export const db = {
       existing.displayName = profile.displayName || existing.displayName;
       existing.photoURL = profile.photoURL || existing.photoURL;
       existing.role = profile.role || existing.role;
+      existing.fullName = profile.fullName || existing.fullName;
+      existing.phone = profile.phone || existing.phone;
+      existing.school = profile.school || existing.school;
+      existing.grade = profile.grade || existing.grade;
+      existing.city = profile.city || existing.city;
       existing.lastLoginAt = now;
       saveDb(data);
       return existing;
@@ -723,9 +728,14 @@ export const db = {
     const created: PlatformUser = {
       uid: profile.uid,
       email: profile.email || '',
-      displayName: profile.displayName || '',
+      displayName: profile.displayName || profile.fullName || '',
       photoURL: profile.photoURL || '',
-      role: profile.role || (profile.email === 'saasproduct@admin.pk' ? 'admin' : 'user'),
+      role: profile.role || (profile.email === 'saasproduct@admin.pk' ? 'admin' : 'student'),
+      fullName: profile.fullName || '',
+      phone: profile.phone || '',
+      school: profile.school || '',
+      grade: profile.grade || '',
+      city: profile.city || '',
       createdAt: now,
       lastLoginAt: now,
     };

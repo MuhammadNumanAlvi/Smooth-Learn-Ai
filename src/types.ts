@@ -258,7 +258,12 @@ export interface PlatformUser {
   email?: string;
   displayName?: string;
   photoURL?: string;
-  role?: 'admin' | 'user';
+  role?: 'admin' | 'user' | 'student';
+  fullName?: string;
+  phone?: string;
+  school?: string;
+  grade?: string;
+  city?: string;
   createdAt?: string;
   lastLoginAt?: string;
 }

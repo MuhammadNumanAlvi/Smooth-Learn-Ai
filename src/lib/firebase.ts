@@ -9,6 +9,9 @@ import {
   sendPasswordResetEmail,
   signOut,
   onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   User,
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
@@ -44,6 +47,10 @@ export async function ensureSignedIn(): Promise<User | null> {
 export async function loginWithGoogle(): Promise<User> {
   const result = await signInWithPopup(auth, googleProvider);
   return result.user;
+}
+
+export async function setRememberMe(remember: boolean): Promise<void> {
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
 }
 
 export async function loginWithEmail(email: string, pass: string): Promise<User> {

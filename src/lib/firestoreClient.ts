@@ -11,7 +11,7 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { auth, firestore } from './firebase';
-import { QuizSession, QuizAttempt, Quiz, DocumentItem, Flashcard } from '../types';
+import { QuizSession, QuizAttempt, Quiz, DocumentItem, Flashcard, PlatformUser } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -147,7 +147,7 @@ export async function syncUserToFirestore(user: any): Promise<void> {
         photoURL: user.photoURL || '',
         createdAt: new Date().toISOString(),
         lastLoginAt: new Date().toISOString(),
-        role: user.email === 'saasproduct@admin.pk' ? 'admin' : 'user',
+        role: user.email === 'saasproduct@admin.pk' ? 'admin' : 'student',
       });
     } else {
       // Just update login time, only force admin if it's the super admin email
@@ -158,6 +158,33 @@ export async function syncUserToFirestore(user: any): Promise<void> {
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+  }
+}
+
+export async function saveStudentProfile(profile: Partial<PlatformUser>): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  const path = `users/${user.uid}`;
+  try {
+    await setDoc(
+      doc(firestore, path),
+      {
+        uid: user.uid,
+        email: user.email || profile.email || '',
+        displayName: profile.fullName || profile.displayName || user.displayName || '',
+        fullName: profile.fullName || '',
+        phone: profile.phone || '',
+        school: profile.school || '',
+        grade: profile.grade || '',
+        city: profile.city || '',
+        role: 'student',
+        lastLoginAt: new Date().toISOString(),
+        createdAt: profile.createdAt || new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 
