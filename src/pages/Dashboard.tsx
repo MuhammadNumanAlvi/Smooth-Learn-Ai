@@ -76,7 +76,19 @@ export function Dashboard() {
     try {
       const user = auth.currentUser;
       if (!user) return;
-      const docs = await api.getDocuments().catch(() => [] as DocumentItem[]);
+      const { loadLocalDocuments } = await import('../lib/bookText');
+      const { listUserDocuments } = await import('../lib/firestoreClient');
+      const [serverDocs, cloudDocs] = await Promise.all([
+        api.getDocuments().catch(() => [] as DocumentItem[]),
+        listUserDocuments().catch(() => [] as DocumentItem[]),
+      ]);
+      const merged = new Map<string, DocumentItem>();
+      [...loadLocalDocuments(), ...cloudDocs, ...serverDocs].forEach((doc) => {
+        if (doc?.id) merged.set(doc.id, doc);
+      });
+      const docs = Array.from(merged.values()).sort((a, b) =>
+        String(b.uploadDate || '').localeCompare(String(a.uploadDate || ''))
+      );
       setDocuments(docs);
       if (docs.length > 0 && !selectedDoc) setSelectedDoc(docs[0]);
       docs.filter((d) => d.processingStatus === 'ready' || !d.processingStatus).forEach((d) => {
@@ -165,8 +177,10 @@ export function Dashboard() {
   const handleDeleteBook = async (docId: string) => {
     setDeletingDocId(docId);
     try {
-      await api.deleteDocument(docId);
+      await api.deleteDocument(docId).catch(() => false);
       await deleteDocumentFromFirestore(docId).catch(() => {});
+      const { removeLocalDocument } = await import('../lib/bookText');
+      removeLocalDocument(docId);
       const next = documents.filter((d) => d.id !== docId);
       setDocuments(next);
       if (selectedDoc?.id === docId) setSelectedDoc(next[0] || null);

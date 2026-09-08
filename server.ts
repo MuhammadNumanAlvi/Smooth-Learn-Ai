@@ -4,16 +4,28 @@ import dotenv from 'dotenv';
 import { db } from './server/db';
 import { getAdminEmail, isAdminEmail, isAdminIdentifier } from './server/admin';
 import { firestoreService } from './server/firestore';
-import * as aiEngine from './server/aiEngine';
-import { chunkDocumentText, indexDocumentChunks, retrieveRelevantContext } from './server/rag';
-import {
-  listAvailableModels,
-  maskKey,
-  resolveGeminiKey,
-  resolveGroqKey,
-  testProviderConnection,
-} from './server/aiProviders';
 import { AISettings, DocumentItem, Quiz, QuizSession, QuizAttempt, Flashcard } from './src/types';
+
+type AIEngine = typeof import('./server/aiEngine');
+type RagMod = typeof import('./server/rag');
+type ProvidersMod = typeof import('./server/aiProviders');
+
+let aiEngineMod: AIEngine | null = null;
+let ragMod: RagMod | null = null;
+let providersMod: ProvidersMod | null = null;
+
+async function loadAI(): Promise<AIEngine> {
+  if (!aiEngineMod) aiEngineMod = await import('./server/aiEngine');
+  return aiEngineMod;
+}
+async function loadRag(): Promise<RagMod> {
+  if (!ragMod) ragMod = await import('./server/rag');
+  return ragMod;
+}
+async function loadProviders(): Promise<ProvidersMod> {
+  if (!providersMod) providersMod = await import('./server/aiProviders');
+  return providersMod;
+}
 
 dotenv.config();
 
@@ -201,7 +213,7 @@ export async function createApp() {
       console.log(`[AI Engine] Analyzing document structure for: ${fileName}`);
 
       const analysisText = rawText.length > 80000 ? rawText.slice(0, 80000) : rawText;
-      const analysis = await aiEngine.analyzeDocumentContent({
+      const analysis = await (await loadAI()).analyzeDocumentContent({
         text: analysisText,
         fileName,
       });
@@ -228,6 +240,7 @@ export async function createApp() {
       // RAG chunking + embedding
       updateProgress(70);
       const indexText = rawText.length > 220000 ? rawText.slice(0, 220000) : rawText;
+      const { chunkDocumentText, indexDocumentChunks } = await loadRag();
       const chunks = chunkDocumentText({
         bookId: docId,
         userId,
@@ -466,6 +479,7 @@ export async function createApp() {
       doc.processingStatus = 'processing';
       db.saveDocument(doc);
 
+      const { chunkDocumentText, indexDocumentChunks } = await loadRag();
       const chunks = chunkDocumentText({
         bookId: doc.id,
         userId,
@@ -586,19 +600,20 @@ export async function createApp() {
       });
 
       if (existingChunks.length === 0) {
+        const { chunkDocumentText, indexDocumentChunks } = await loadRag();
         const generatedChunks = chunkDocumentText({
           bookId: doc.id,
           userId,
-        text: (typeof sourceText === 'string' && sourceText.trim().length > 80)
-          ? sourceText.slice(0, 80000)
-          : db.getDocumentText(doc.id, doc.extractedContent),
+          text: (typeof sourceText === 'string' && sourceText.trim().length > 80)
+            ? sourceText.slice(0, 80000)
+            : db.getDocumentText(doc.id, doc.extractedContent),
           chapters: doc.chapters,
         });
         await indexDocumentChunks(generatedChunks);
       }
 
       // Generate RAG grounded questions using AI Engine
-      const aiResponse = await aiEngine.generateQuizQuestions({
+      const aiResponse = await (await loadAI()).generateQuizQuestions({
         userId,
         bookId: doc.id,
         documentTitle: doc.title,
@@ -714,7 +729,7 @@ export async function createApp() {
         `[QuizMind] Generating Weak-Area Practice on "${targetWeak.topic}" from "${targetDoc.title}" for user: ${userId}...`
       );
 
-      const aiResponse = await aiEngine.generateQuizQuestions({
+      const aiResponse = await (await loadAI()).generateQuizQuestions({
         userId,
         bookId: targetDoc.id,
         documentTitle: targetDoc.title,
@@ -904,7 +919,7 @@ export async function createApp() {
 
       const answerRecord = session.answers[questionId];
 
-      const aiResponse = await aiEngine.explainConcept({
+      const aiResponse = await (await loadAI()).explainConcept({
         userId,
         bookId: session.bookId,
         question: question.question,
@@ -1086,6 +1101,7 @@ export async function createApp() {
 
       if (chapter) {
         try {
+          const { retrieveRelevantContext } = await loadRag();
           const retrieval = await retrieveRelevantContext({
             userId,
             bookId: doc.id,
@@ -1104,7 +1120,7 @@ export async function createApp() {
       }
 
       console.log(`[AI Engine] Generating flashcards for ${doc.title} / ${chapterLabel}...`);
-      const flashcards = await aiEngine.generateFlashcards({
+      const flashcards = await (await loadAI()).generateFlashcards({
         documentId: doc.id,
         documentTitle: `${doc.title}${chapter ? ` — ${chapter.title}` : ''}`,
         documentContent: chapterMaterial || storedBookText,
@@ -1199,6 +1215,7 @@ export async function createApp() {
       if (typeof sourceText === 'string' && sourceText.trim().length > 80) {
         const bookSlice = sourceText.slice(0, 80000);
         db.saveDocumentText(doc.id, bookSlice);
+        const { chunkDocumentText, indexDocumentChunks } = await loadRag();
         const generatedChunks = chunkDocumentText({
           bookId: doc.id,
           userId,
@@ -1208,7 +1225,7 @@ export async function createApp() {
         await indexDocumentChunks(generatedChunks.slice(0, 24));
       }
 
-      const tutorResponse = await aiEngine.answerTutorQuestion({
+      const tutorResponse = await (await loadAI()).answerTutorQuestion({
         userId,
         bookId: doc.id,
         documentTitle: doc.title,
@@ -1427,23 +1444,27 @@ export async function createApp() {
   });
 
   // Keys never leave the server — the admin UI only ever sees a masked preview.
-  const presentAISettings = (settings: AISettings) => ({
-    provider: settings.provider === 'gemini' ? 'gemini' : 'groq',
-    groqModel: settings.groqModel || '',
-    geminiModel: settings.geminiModel || '',
-    groqKeyMasked: maskKey(resolveGroqKey(settings)),
-    geminiKeyMasked: maskKey(resolveGeminiKey(settings)),
-    hasGroqKey: Boolean(resolveGroqKey(settings)),
-    hasGeminiKey: Boolean(resolveGeminiKey(settings)),
-  });
+  const presentAISettings = async (settings: AISettings) => {
+    const { maskKey, resolveGroqKey, resolveGeminiKey } = await loadProviders();
+    return {
+      provider: settings.provider === 'gemini' ? 'gemini' : 'groq',
+      groqModel: settings.groqModel || '',
+      geminiModel: settings.geminiModel || '',
+      groqKeyMasked: maskKey(resolveGroqKey(settings)),
+      geminiKeyMasked: maskKey(resolveGeminiKey(settings)),
+      hasGroqKey: Boolean(resolveGroqKey(settings)),
+      hasGeminiKey: Boolean(resolveGeminiKey(settings)),
+    };
+  };
 
   // GET AI Settings
   app.get('/api/admin/settings/ai', async (req, res) => {
     try {
       if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Access denied' });
       const settings: AISettings = (db as any).getAISettings();
+      const { listAvailableModels } = await loadProviders();
       const models = await listAvailableModels(settings);
-      res.json({ success: true, data: { ...presentAISettings(settings), models } });
+      res.json({ success: true, data: { ...(await presentAISettings(settings)), models } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1475,6 +1496,7 @@ export async function createApp() {
       const geminiKey = typeof body.geminiKey === 'string' ? body.geminiKey.trim() : '';
       if (geminiKey) next.geminiKey = geminiKey;
 
+      const { resolveGeminiKey, resolveGroqKey, testProviderConnection, listAvailableModels } = await loadProviders();
       const activeProvider = next.provider === 'gemini' ? 'gemini' : 'groq';
       const activeKey = activeProvider === 'gemini' ? resolveGeminiKey(next) : resolveGroqKey(next);
       if (!activeKey) {
@@ -1495,7 +1517,7 @@ export async function createApp() {
 
       (db as any).saveAISettings(next);
       const models = await listAvailableModels(next);
-      res.json({ success: true, data: { ...presentAISettings(next), models } });
+      res.json({ success: true, data: { ...(await presentAISettings(next)), models } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1506,6 +1528,7 @@ export async function createApp() {
     try {
       if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Access denied' });
       const body = req.body || {};
+      const { testProviderConnection } = await loadProviders();
       const provider = body.provider === 'gemini' ? 'gemini' : 'groq';
       const result = await testProviderConnection({
         provider,

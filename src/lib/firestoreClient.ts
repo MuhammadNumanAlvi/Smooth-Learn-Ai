@@ -202,12 +202,49 @@ export function toDocumentMeta(docItem: DocumentItem) {
     summary: (docItem.summary || '').slice(0, 500),
     chapterCount: docItem.chapters?.length || 0,
     keyTermCount: docItem.keyTerms?.length || 0,
-    chapters: (docItem.chapters || []).map((c) => ({ id: c.id, title: c.title })),
+    chapters: (docItem.chapters || []).map((c) => ({
+      id: c.id,
+      title: c.title,
+      summary: c.summary || '',
+      keyPoints: c.keyPoints || [],
+      estimatedReadTime: c.estimatedReadTime || '15 min',
+    })),
     overallDifficulty: docItem.overallDifficulty,
     processingStatus: docItem.processingStatus || 'ready',
     progress: docItem.progress || 0,
     updatedAt: new Date().toISOString(),
   };
+}
+
+export async function listUserDocuments(): Promise<DocumentItem[]> {
+  const user = auth.currentUser;
+  if (!user) return [];
+  try {
+    const snap = await getDocs(query(collection(firestore, 'documents'), where('userId', '==', user.uid)));
+    return snap.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: data.id || d.id,
+        userId: data.userId || user.uid,
+        title: data.title || 'Untitled book',
+        fileName: data.fileName || 'document.pdf',
+        fileSize: data.fileSize || '',
+        uploadDate: data.uploadDate || data.updatedAt || new Date().toISOString(),
+        pageCount: data.pageCount || 0,
+        summary: data.summary || '',
+        extractedContent: '',
+        chapters: Array.isArray(data.chapters) ? data.chapters : [],
+        keyTerms: [],
+        overallDifficulty: data.overallDifficulty || 'Intermediate',
+        totalQuizzesGenerated: data.totalQuizzesGenerated || 0,
+        processingStatus: data.processingStatus || 'ready',
+        progress: data.progress || 100,
+      } as DocumentItem;
+    });
+  } catch (error) {
+    console.error('Firestore document list failed:', error);
+    return [];
+  }
 }
 
 export async function saveDocumentToFirestore(docItem: DocumentItem): Promise<void> {

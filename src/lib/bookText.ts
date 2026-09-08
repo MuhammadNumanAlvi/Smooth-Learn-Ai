@@ -1,5 +1,5 @@
 import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
-import { ChapterItem } from '../types';
+import { ChapterItem, DocumentItem } from '../types';
 import { auth, firestore } from './firebase';
 
 const IDB_NAME = 'smooth-learn-books';
@@ -101,4 +101,29 @@ export async function loadBookText(docId: string): Promise<string> {
   } catch {
     return '';
   }
+}
+
+const LOCAL_DOCS_KEY = 'smooth-learn-documents';
+
+export function loadLocalDocuments(): DocumentItem[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_DOCS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalDocument(doc: DocumentItem): void {
+  const next = [doc, ...loadLocalDocuments().filter((d) => d.id !== doc.id)];
+  localStorage.setItem(LOCAL_DOCS_KEY, JSON.stringify(next));
+}
+
+export function removeLocalDocument(id: string): void {
+  localStorage.setItem(
+    LOCAL_DOCS_KEY,
+    JSON.stringify(loadLocalDocuments().filter((d) => d.id !== id))
+  );
 }

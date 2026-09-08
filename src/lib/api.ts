@@ -74,23 +74,55 @@ export const api = {
     const id = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     await saveBookText(id, text);
     const title = payload.fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-    const res = await fetch('/api/documents/register', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        id,
-        fileName: payload.fileName,
-        fileSize: payload.fileSize,
-        pageCount: payload.pageCount || 0,
-        title,
-        summary: text.slice(0, 240),
-        chapters,
-        userId: auth.currentUser?.uid || 'default-user',
-      }),
-    });
-    const json = await parseApiJson(res);
-    if (!json.success) throw new Error(json.error || 'Failed to save document');
-    return json.data;
+    const localDoc: DocumentItem = {
+      id,
+      userId: auth.currentUser?.uid || 'default-user',
+      title,
+      fileName: payload.fileName,
+      fileSize: payload.fileSize || '',
+      uploadDate: new Date().toISOString(),
+      pageCount: payload.pageCount || 0,
+      summary: text.slice(0, 240),
+      extractedContent: '',
+      chapters,
+      keyTerms: [],
+      overallDifficulty: 'Intermediate',
+      totalQuizzesGenerated: 0,
+      processingStatus: 'ready',
+      progress: 100,
+    };
+    const { saveLocalDocument } = await import('./bookText');
+    saveLocalDocument(localDoc);
+    try {
+      const { saveDocumentToFirestore } = await import('./firestoreClient');
+      await saveDocumentToFirestore(localDoc);
+    } catch {
+      // Book still lives in this browser.
+    }
+    try {
+      const res = await fetch('/api/documents/register', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          id,
+          fileName: payload.fileName,
+          fileSize: payload.fileSize,
+          pageCount: payload.pageCount || 0,
+          title,
+          summary: text.slice(0, 240),
+          chapters,
+          userId: auth.currentUser?.uid || 'default-user',
+        }),
+      });
+      const json = await parseApiJson(res);
+      if (json?.success && json.data) {
+        saveLocalDocument(json.data);
+        return json.data;
+      }
+    } catch {
+      // Server can be down; the book is already saved locally.
+    }
+    return localDoc;
   },
 
   async pollDocumentProgress(id: string): Promise<{ status: string; progress: number; title: string }> {
