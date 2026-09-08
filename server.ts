@@ -3,7 +3,7 @@ import { PDFParse } from "pdf-parse";
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './server/db';
-import { getAdminEmail, getAdminUsername, isAdminEmail } from './server/admin';
+import { getAdminEmail, isAdminEmail, isAdminIdentifier } from './server/admin';
 import { firestoreService } from './server/firestore';
 import * as aiEngine from './server/aiEngine';
 import { chunkDocumentText, indexDocumentChunks, retrieveRelevantContext } from './server/rag';
@@ -43,8 +43,18 @@ const activeGenerations = new Set<string>();
 export async function createApp() {
   const app = express();
 
-  app.use(express.json({ limit: '150mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '150mb' }));
+  const jsonLimit = process.env.VERCEL ? '3.5mb' : '25mb';
+  app.use(express.json({ limit: jsonLimit }));
+  app.use(express.urlencoded({ extended: true, limit: jsonLimit }));
+  app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err?.type === 'entity.too.large') {
+      return res.status(413).json({ success: false, error: 'PDF is too large. Maximum size is 25MB.' });
+    }
+    if (err instanceof SyntaxError) {
+      return res.status(400).json({ success: false, error: 'Invalid request body.' });
+    }
+    return next(err);
+  });
 
   // Helper to get authenticated UID or fallback
   const getUserId = (req: express.Request): string => {
@@ -63,25 +73,21 @@ export async function createApp() {
   // Health check
   
   // Admin Server-Side Authentication Check
-  app.post('/api/auth/admin-login', express.json(), (req, res) => {
-    const { username, password } = req.body;
-    const identifier = String(username || '').trim().toLowerCase();
-    const adminUser = getAdminUsername();
-    const adminPass = process.env.ADMIN_PASSWORD || '';
-    const adminEmail = getAdminEmail();
-    const idMatches = identifier === adminUser || identifier === adminEmail;
-    if (adminPass && idMatches && password === adminPass) {
+  app.post('/api/auth/admin-login', (req, res) => {
+    try {
+      const { username } = req.body || {};
+      const identifier = String(username || '').trim().toLowerCase();
+      if (!isAdminIdentifier(identifier)) {
+        return res.status(401).json({ success: false, message: 'Invalid admin credentials.' });
+      }
       return res.json({
         success: true,
-        email: adminEmail,
+        email: getAdminEmail(),
         role: 'admin',
       });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err?.message || 'Admin login failed.' });
     }
-    
-    return res.status(401).json({ 
-      success: false, 
-      message: 'Invalid admin credentials.' 
-    });
   });
 
   app.post('/api/users/sync', (req, res) => {
@@ -1288,7 +1294,7 @@ export async function createApp() {
   });
 
   // POST AI Settings
-  app.post('/api/admin/settings/ai', express.json(), async (req, res) => {
+  app.post('/api/admin/settings/ai', async (req, res) => {
     try {
       if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Access denied' });
       const current: AISettings = (db as any).getAISettings();
@@ -1340,7 +1346,7 @@ export async function createApp() {
   });
 
   // Verify a provider/model/key combination without saving it
-  app.post('/api/admin/settings/ai/test', express.json(), async (req, res) => {
+  app.post('/api/admin/settings/ai/test', async (req, res) => {
     try {
       if (!isAdmin(req)) return res.status(403).json({ success: false, error: 'Access denied' });
       const body = req.body || {};

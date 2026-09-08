@@ -34,6 +34,25 @@ import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/fir
 
 type Tab = 'overview' | 'users' | 'documents' | 'quizzes' | 'settings';
 
+const GROQ_MODEL_FALLBACK = [
+  { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B — fastest', recommended: true },
+  { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B — highest quality' },
+  { id: 'qwen/qwen3.6-27b', label: 'Qwen3.6 27B — reasoning' },
+];
+const GEMINI_MODEL_FALLBACK = [
+  { id: 'gemini-3.6-flash', label: 'gemini-3.6-flash', recommended: true },
+  { id: 'gemini-3.7-flash', label: 'gemini-3.7-flash' },
+  { id: 'gemini-flash-latest', label: 'gemini-flash-latest' },
+];
+
+function withCurrentModel(list: any[] | undefined, current: string, fallback: typeof GROQ_MODEL_FALLBACK) {
+  const base = (list && list.length ? list : fallback).map((m) => ({ ...m }));
+  if (current && !base.some((m) => m.id === current)) {
+    base.unshift({ id: current, label: current });
+  }
+  return base;
+}
+
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
@@ -69,6 +88,14 @@ export const AdminDashboard: React.FC = () => {
       setAiSettings(ais);
     } catch (err) {
       console.error('Admin data load error:', err);
+      setAiSettings((prev: any) => prev || {
+        provider: 'groq',
+        groqModel: 'openai/gpt-oss-20b',
+        geminiModel: 'gemini-3.6-flash',
+        models: { groq: [], gemini: [] },
+        hasGroqKey: false,
+        hasGeminiKey: false,
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -100,7 +127,7 @@ export const AdminDashboard: React.FC = () => {
       const result = await api.adminTestAISettings({
         provider,
         model: provider === 'groq' ? aiSettings?.groqModel : aiSettings?.geminiModel,
-        apiKey: provider === 'groq' ? keyDrafts.groqKey : keyDrafts.geminiKey,
+        apiKey: provider === 'groq' ? (keyDrafts.groqKey || undefined) : (keyDrafts.geminiKey || undefined),
       });
       setSettingsStatus({
         type: result.ok ? 'success' : 'error',
@@ -736,8 +763,8 @@ export const AdminDashboard: React.FC = () => {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {/* Groq Settings */}
-                        <div className={`space-y-5 p-6 rounded-[24px] border transition-opacity ${
-                          aiSettings.provider === 'groq' ? 'border-indigo-100 bg-indigo-50/30' : 'border-gray-100 opacity-50 grayscale'
+                        <div className={`space-y-5 p-6 rounded-[24px] border ${
+                          aiSettings.provider === 'groq' ? 'border-indigo-100 bg-indigo-50/30' : 'border-gray-100 bg-white'
                         }`}>
                           <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-indigo-500" /> Groq Settings
@@ -764,7 +791,7 @@ export const AdminDashboard: React.FC = () => {
                               onChange={(e) => setAiSettings({...aiSettings, groqModel: e.target.value})}
                               className="w-full px-4 py-3 rounded-xl bg-white border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-sm text-gray-700"
                             >
-                              {(aiSettings.models?.groq || []).map((m: any) => (
+                              {(withCurrentModel(aiSettings.models?.groq, aiSettings.groqModel, GROQ_MODEL_FALLBACK)).map((m: any) => (
                                 <option key={m.id} value={m.id}>
                                   {m.label}{m.recommended ? ' (Recommended)' : ''}
                                 </option>
@@ -782,8 +809,8 @@ export const AdminDashboard: React.FC = () => {
                         </div>
 
                         {/* Gemini Settings */}
-                        <div className={`space-y-5 p-6 rounded-[24px] border transition-opacity ${
-                          aiSettings.provider === 'gemini' ? 'border-teal-100 bg-teal-50/30' : 'border-gray-100 opacity-50 grayscale'
+                        <div className={`space-y-5 p-6 rounded-[24px] border ${
+                          aiSettings.provider === 'gemini' ? 'border-teal-100 bg-teal-50/30' : 'border-gray-100 bg-white'
                         }`}>
                           <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-teal-500" /> Gemini Settings
@@ -810,7 +837,7 @@ export const AdminDashboard: React.FC = () => {
                               onChange={(e) => setAiSettings({...aiSettings, geminiModel: e.target.value})}
                               className="w-full px-4 py-3 rounded-xl bg-white border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-200 outline-none transition-all font-bold text-sm text-gray-700"
                             >
-                              {(aiSettings.models?.gemini || []).map((m: any) => (
+                              {(withCurrentModel(aiSettings.models?.gemini, aiSettings.geminiModel, GEMINI_MODEL_FALLBACK)).map((m: any) => (
                                 <option key={m.id} value={m.id}>
                                   {m.label}{m.recommended ? ' (Recommended)' : ''}
                                 </option>

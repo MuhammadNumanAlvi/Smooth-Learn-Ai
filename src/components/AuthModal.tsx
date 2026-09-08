@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, Sparkles, Loader2, AlertCircle, User, Phone, GraduationCap, Building2, MapPin } from 'lucide-react';
 import { updateProfile } from 'firebase/auth';
-import { isAdminEmail } from '../lib/admin';
+import { ADMIN_EMAIL, isAdminEmail, isAdminIdentifier } from '../lib/admin';
 import { auth, loginWithEmail, registerWithEmail, loginWithGoogle, setRememberMe } from '../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -43,8 +43,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   if (!isOpen) return null;
 
   const identifier = email.trim();
-  const isAdminLogin =
-    mode === 'login' && identifier.length > 0 && (!identifier.includes('@') || isAdminEmail(identifier));
+  const isAdminLogin = mode === 'login' && isAdminIdentifier(identifier);
 
   const getFriendlyErrorMessage = (err: any): string => {
     const errCode = err?.code || '';
@@ -86,21 +85,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   };
 
   const handleAdminLogin = async () => {
-    if (isAdminEmail(identifier)) {
-      await signInAdminFirebase(identifier);
-      return;
+    const targetEmail = isAdminEmail(identifier) ? identifier.toLowerCase() : ADMIN_EMAIL;
+    try {
+      const res = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: identifier, password }),
+      });
+      const raw = await res.text();
+      try {
+        const data = JSON.parse(raw);
+        if (data?.email) {
+          await signInAdminFirebase(String(data.email).toLowerCase());
+          return;
+        }
+      } catch {
+        // Vercel sometimes returns plain text on function errors — still sign in via Firebase.
+      }
+    } catch {
+      // API down — Firebase still confirms the admin password.
     }
-
-    const res = await fetch('/api/auth/admin-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: identifier, password }),
-    });
-    const data = await res.json();
-    if (!data.success || !data.email) {
-      throw new Error(data.message || 'Invalid admin credentials.');
-    }
-    await signInAdminFirebase(data.email);
+    await signInAdminFirebase(targetEmail);
   };
 
   const handleStudentLogin = async () => {
@@ -223,14 +228,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               </>
             )}
 
-            <label className="block text-xs font-bold text-gray-700 uppercase">{mode === 'login' ? 'Email' : 'Email'}</label>
+            <label className="block text-xs font-bold text-gray-700 uppercase">{mode === 'login' ? 'Email or username' : 'Email'}</label>
             <div className="relative">
               <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
               <input
                 className={fieldClass}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@email.com"
+                placeholder={mode === 'login' ? 'Email or admin username' : 'you@email.com'}
                 autoComplete="email"
                 required
               />

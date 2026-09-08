@@ -21,13 +21,33 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+async function parseApiJson(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text.trim()) {
+    if (res.ok) return { success: true };
+    throw new Error('Server returned an empty response. Please try again.');
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    const lower = text.toLowerCase();
+    if (res.status === 413 || lower.includes('request entity') || lower.includes('too large')) {
+      throw new Error('This PDF is too large to send as a file. Maximum size is 25MB. Refresh the page and try again — text is now extracted in your browser.');
+    }
+    if (res.status >= 500 || lower.startsWith('a server')) {
+      throw new Error('Server error. Please wait a moment and try again.');
+    }
+    throw new Error(text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || 'Unexpected server response.');
+  }
+}
+
 export const api = {
   async getDocuments(): Promise<DocumentItem[]> {
     const uid = auth.currentUser?.uid || 'default-user';
     const res = await fetch(`/api/documents?userId=${uid}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch documents');
     return json.data;
   },
@@ -36,7 +56,7 @@ export const api = {
     const res = await fetch(`/api/documents/${id}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch document');
     return json.data;
   },
@@ -55,14 +75,14 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to analyze document');
     return json.data;
   },
 
   async pollDocumentProgress(id: string): Promise<{ status: string; progress: number; title: string }> {
     const res = await fetch(`/api/documents/${id}/progress`, { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to poll progress');
     return json.data;
   },
@@ -73,7 +93,7 @@ export const api = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     return !!json.success;
   },
 
@@ -82,7 +102,7 @@ export const api = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to re-process document');
     return json.data;
   },
@@ -107,7 +127,7 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to generate quiz');
     return {
       quiz: json.data,
@@ -121,7 +141,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ bookId }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to generate weak-area quiz');
     return {
       quiz: json.data,
@@ -135,14 +155,14 @@ export const api = {
       ? `/api/quizzes?documentId=${documentId}&userId=${uid}`
       : `/api/quizzes?userId=${uid}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch quizzes');
     return json.data;
   },
 
   async getQuiz(id: string): Promise<Quiz> {
     const res = await fetch(`/api/quizzes/${id}`, { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch quiz');
     return json.data;
   },
@@ -153,7 +173,7 @@ export const api = {
     const res = await fetch(`/api/quiz-sessions/active?userId=${uid}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) return null;
     return json.data;
   },
@@ -162,7 +182,7 @@ export const api = {
     const res = await fetch(`/api/quiz-sessions/${sessionId}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch quiz session');
     return json.data;
   },
@@ -185,7 +205,7 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to record answer');
     return json.data;
   },
@@ -202,7 +222,7 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to complete quiz');
     return json.data;
   },
@@ -226,7 +246,7 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to get detailed explanation');
     return json.data;
   },
@@ -244,7 +264,7 @@ export const api = {
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to submit quiz');
     return json.data;
   },
@@ -263,7 +283,7 @@ export const api = {
       ? `/api/quiz/attempts?documentId=${documentId}&userId=${uid}`
       : `/api/quiz/attempts?userId=${uid}`;
     const res = await fetch(url, { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch attempts');
     return json.data;
   },
@@ -276,7 +296,7 @@ export const api = {
     const res = await fetch(`/api/flashcards/${documentId}${qs ? `?${qs}` : ''}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch flashcards');
     return json.data;
   },
@@ -287,7 +307,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ id, status }),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to update flashcard');
     return json.data;
   },
@@ -297,7 +317,7 @@ export const api = {
       ? `/api/tutor/conversations?documentId=${documentId}`
       : '/api/tutor/conversations';
     const res = await fetch(url, { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch conversations');
     return json.data;
   },
@@ -307,7 +327,7 @@ export const api = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     return !!json.success;
   },
 
@@ -328,7 +348,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to get tutor answer');
     return json.data;
   },
@@ -346,7 +366,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to save student profile');
   },
 
@@ -370,7 +390,7 @@ export const api = {
     const res = await fetch(`/api/analytics?userId=${uid}`, {
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch analytics');
     return json.data;
   },
@@ -378,14 +398,14 @@ export const api = {
   // ─── Admin API Methods ──────────────────────────────────────────────────────
   async adminGetStats(): Promise<any> {
     const res = await fetch('/api/admin/stats', { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch admin stats');
     return json.data;
   },
 
   async adminGetDocuments(): Promise<any[]> {
     const res = await fetch('/api/admin/documents', { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch admin documents');
     return json.data;
   },
@@ -395,14 +415,14 @@ export const api = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to delete admin document');
     return true;
   },
 
   async adminGetAISettings(): Promise<any> {
     const res = await fetch('/api/admin/settings/ai', { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch AI settings');
     return json.data;
   },
@@ -413,7 +433,7 @@ export const api = {
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to save AI settings');
     return json.data;
   },
@@ -428,14 +448,14 @@ export const api = {
       headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to test AI connection');
     return json.data;
   },
 
   async adminGetUsers(): Promise<any[]> {
     const res = await fetch('/api/admin/users', { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch admin users');
     return json.data;
   },
@@ -445,13 +465,13 @@ export const api = {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     return !!json.success;
   },
 
   async adminGetAttempts(): Promise<any[]> {
     const res = await fetch('/api/admin/attempts', { headers: getAuthHeaders() });
-    const json = await res.json();
+    const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch attempts');
     return json.data;
   },

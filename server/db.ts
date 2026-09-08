@@ -35,6 +35,8 @@ const DATA_DIR = process.env.VERCEL
   : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'quizmind.json');
 
+let memoryAiSettings: AISettings | null = null;
+
 function ensureDbFile(): DatabaseSchema {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -751,19 +753,24 @@ export const db = {
 
   getAISettings(): AISettings {
     const data = ensureDbFile();
-    const stored = data.aiSettings!;
-    const provider = process.env.AI_PROVIDER === 'gemini' || process.env.AI_PROVIDER === 'groq'
+    const stored = memoryAiSettings || data.aiSettings || {
+      provider: 'groq' as const,
+      groqModel: 'openai/gpt-oss-20b',
+      geminiModel: 'gemini-3.6-flash',
+    };
+    const envProvider = process.env.AI_PROVIDER === 'gemini' || process.env.AI_PROVIDER === 'groq'
       ? process.env.AI_PROVIDER
-      : stored.provider;
+      : undefined;
     return {
       ...stored,
-      provider,
-      groqModel: process.env.GROQ_MODEL || stored.groqModel,
-      geminiModel: process.env.GEMINI_MODEL || process.env.GEMINI_GENERATION_MODEL || stored.geminiModel,
+      provider: stored.provider || envProvider || 'groq',
+      groqModel: stored.groqModel || process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
+      geminiModel: stored.geminiModel || process.env.GEMINI_MODEL || process.env.GEMINI_GENERATION_MODEL || 'gemini-3.6-flash',
     };
   },
 
   saveAISettings(settings: AISettings): void {
+    memoryAiSettings = settings;
     const data = ensureDbFile();
     data.aiSettings = settings;
     saveDb(data);

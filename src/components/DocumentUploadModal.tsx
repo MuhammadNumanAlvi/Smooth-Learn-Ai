@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UploadCloud, FileText, X, AlertCircle, File, CheckCircle2, ChevronRight, Zap, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
+import { extractPdfText, MAX_PDF_BYTES } from '../lib/extractPdfText';
 import { auth, ensureSignedIn } from '../lib/firebase';
 import { DocumentItem } from '../types';
 import { saveDocumentToFirestore, syncUserToFirestore } from '../lib/firestoreClient';
@@ -52,8 +53,8 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
       setError('Only PDF files are supported currently.');
       return;
     }
-    if (selected.size > 100 * 1024 * 1024) {
-      setError('File size must be less than 100MB.');
+    if (selected.size > MAX_PDF_BYTES) {
+      setError('File size must be 25MB or less.');
       return;
     }
     setFile(selected);
@@ -75,21 +76,23 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
       if (!user) user = await ensureSignedIn();
       if (user) await syncUserToFirestore(user).catch(console.error);
 
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
+      setProgress(8);
+      const { text } = await extractPdfText(file, (pct) => {
+        setProgress(8 + Math.round(pct * 0.45));
       });
-      reader.readAsDataURL(file);
-      const base64 = await base64Promise;
-      setProgress(20);
+      if (!text || text.replace(/\s/g, '').length < 80) {
+        throw new Error(
+          'This PDF has almost no selectable text. It may be a scanned image. Export a text-based PDF and try again.'
+        );
+      }
+      setProgress(58);
 
       const created = await api.analyzeDocument({
         fileName: file.name,
         fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        pdfBase64: base64,
+        text,
       });
-      setProgress(40);
+      setProgress(82);
       await saveDocumentToFirestore(created).catch(console.error);
 
       onUploaded(created);
@@ -148,7 +151,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
                 <UploadCloud className="w-6 h-6 text-teal-500" />
               </div>
               <p className="text-sm font-bold text-gray-700">Click or drag PDF here</p>
-              <p className="text-xs text-gray-400 mt-1">Max file size: 100MB</p>
+              <p className="text-xs text-gray-400 mt-1">PDF only · max 25MB</p>
             </div>
           )}
 
@@ -186,7 +189,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
                   <Zap className="w-8 h-8 text-teal-500" />
                 </div>
               </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-2">Analyzing Document...</h4>
+              <h4 className="text-lg font-bold text-gray-900 mb-2">Reading your PDF…</h4>
               <p className="text-sm text-gray-500 mb-6 max-w-[280px]">
                 <AnimatePresence mode="wait">
                   <motion.span key={factIndex} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="block">
