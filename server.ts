@@ -1,5 +1,4 @@
 import express from "express";
-import { PDFParse } from "pdf-parse";
 import path from 'path';
 import dotenv from 'dotenv';
 import { db } from './server/db';
@@ -293,23 +292,69 @@ export async function createApp() {
       progress: 10,
     };
     db.saveDocument(skeletonDoc);
-    await Promise.race([
-      runDocumentProcessing(docId, params.userId, params.text, undefined, params.fileName || 'document.pdf'),
-      new Promise<void>((resolve) => setTimeout(resolve, 22000)),
-    ]);
-    const latest = db.getDocumentById(docId, params.userId) || skeletonDoc;
-    if (latest.processingStatus === 'processing') {
-      db.saveDocument({
-        ...latest,
+    const fallbackChapters = latestChaptersFromText(params.text);
+    db.saveDocument({
+      ...skeletonDoc,
+      processingStatus: 'ready',
+      progress: 100,
+      summary: params.text.slice(0, 240) || 'Book uploaded.',
+      chapters: fallbackChapters,
+    });
+    return slimDoc(db.getDocumentById(docId, params.userId) || skeletonDoc);
+  }
+
+  function latestChaptersFromText(text: string) {
+    const matches = [...text.matchAll(/(?:^|\n)\s*((?:chapter|unit|lesson)\s+\d+[:.\s][^\n]{0,90})/gi)];
+    const titles = [...new Set(matches.map((m) => m[1].replace(/\s+/g, ' ').trim()))].slice(0, 40);
+    if (titles.length < 2) {
+      return [{ id: 'ch-full', title: 'Full book', summary: text.slice(0, 240), keyPoints: [], estimatedReadTime: '30 min' }];
+    }
+    return titles.map((title, i) => ({
+      id: `ch-${i + 1}`,
+      title,
+      summary: '',
+      keyPoints: [],
+      estimatedReadTime: '15 min',
+    }));
+  }
+
+  app.post('/api/documents/register', (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const body = req.body || {};
+      const quota = db.checkQuota(userId, 'upload_book');
+      if (!quota.allowed) return res.status(429).json({ success: false, error: quota.message });
+      const rawId = String(body.id || '').trim();
+      const docId = /^[a-zA-Z0-9_-]+$/.test(rawId)
+        ? rawId
+        : `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const fileName = String(body.fileName || 'document.pdf');
+      const chapters = Array.isArray(body.chapters) && body.chapters.length
+        ? body.chapters
+        : [{ id: 'ch-full', title: 'Full book', summary: '', keyPoints: [], estimatedReadTime: '30 min' }];
+      const doc: DocumentItem = {
+        id: docId,
+        userId,
+        title: String(body.title || fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')),
+        fileName,
+        fileSize: String(body.fileSize || ''),
+        uploadDate: new Date().toISOString(),
+        pageCount: Number(body.pageCount) || 0,
+        summary: String(body.summary || 'Book uploaded. Open a chapter to practise.'),
+        extractedContent: '',
+        chapters,
+        keyTerms: [],
+        overallDifficulty: 'Intermediate',
+        totalQuizzesGenerated: 0,
         processingStatus: 'ready',
         progress: 100,
-        chapters: latest.chapters?.length
-          ? latest.chapters
-          : [{ id: 'ch-full', title: 'Full book', summary: params.text.slice(0, 240), keyPoints: [] } as any],
-      });
+      };
+      db.saveDocument(doc);
+      res.json({ success: true, data: slimDoc(doc) });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save document.' });
     }
-    return slimDoc(db.getDocumentById(docId, params.userId) || latest);
-  }
+  });
 
   app.post('/api/documents/analyze/init', (req, res) => {
     try {
@@ -509,6 +554,7 @@ export async function createApp() {
       difficulty,
       questionStyle,
       count,
+      sourceText,
     } = req.body;
 
     const doc = db.getDocumentById(documentId, userId);
@@ -543,7 +589,9 @@ export async function createApp() {
         const generatedChunks = chunkDocumentText({
           bookId: doc.id,
           userId,
-          text: db.getDocumentText(doc.id, doc.extractedContent),
+        text: (typeof sourceText === 'string' && sourceText.trim().length > 80)
+          ? sourceText.slice(0, 80000)
+          : db.getDocumentText(doc.id, doc.extractedContent),
           chapters: doc.chapters,
         });
         await indexDocumentChunks(generatedChunks);
@@ -943,12 +991,13 @@ export async function createApp() {
   });
 
   // Flashcards
-  app.get('/api/flashcards/:documentId', async (req, res) => {
+  app.all('/api/flashcards/:documentId', async (req, res) => {
     try {
       const userId = getUserId(req);
       const { documentId } = req.params;
-      const chapterId = typeof req.query.chapterId === 'string' ? req.query.chapterId : '';
-      const chapterTitle = typeof req.query.chapterTitle === 'string' ? req.query.chapterTitle : '';
+      const chapterId = String(req.body?.chapterId || req.query.chapterId || '');
+      const chapterTitle = String(req.body?.chapterTitle || req.query.chapterTitle || '');
+      const incomingText = typeof req.body?.sourceText === 'string' ? req.body.sourceText : '';
       const existing = db.getFlashcards(documentId, userId);
       const doc = db.getDocumentById(documentId, userId);
       if (!doc) {
@@ -1027,10 +1076,13 @@ export async function createApp() {
         return res.json({ success: true, data: existing });
       }
 
-      const chapterLabel = chapter?.title || chapterTitle || doc.title;
-      let chapterMaterial = chapter
-        ? `${chapter.title}\n${chapter.summary || ''}\n${(chapter.keyPoints || []).join('\n')}`
+      const storedBookText = incomingText.trim().length > 80
+        ? incomingText.slice(0, 80000)
         : db.getDocumentText(doc.id, doc.extractedContent);
+      const chapterLabel = chapter?.title || chapterTitle || doc.title;
+      let chapterMaterial = storedBookText || (chapter
+        ? `${chapter.title}\n${chapter.summary || ''}\n${(chapter.keyPoints || []).join('\n')}`
+        : '');
 
       if (chapter) {
         try {
@@ -1055,7 +1107,7 @@ export async function createApp() {
       const flashcards = await aiEngine.generateFlashcards({
         documentId: doc.id,
         documentTitle: `${doc.title}${chapter ? ` — ${chapter.title}` : ''}`,
-        documentContent: chapterMaterial || db.getDocumentText(doc.id, doc.extractedContent),
+        documentContent: chapterMaterial || storedBookText,
         count: chapter ? 6 : 8,
       });
 
@@ -1121,7 +1173,7 @@ export async function createApp() {
   app.post('/api/tutor/chat', async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { documentId, messages, userQuestion, action, conversationId } = req.body;
+      const { documentId, messages, userQuestion, action, conversationId, sourceText } = req.body;
 
       // Rate limit check
       const clientIp = req.ip || '127.0.0.1';
@@ -1142,6 +1194,18 @@ export async function createApp() {
       const doc = db.getDocumentById(documentId, userId);
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Study material not found or access denied' });
+      }
+
+      if (typeof sourceText === 'string' && sourceText.trim().length > 80) {
+        const bookSlice = sourceText.slice(0, 80000);
+        db.saveDocumentText(doc.id, bookSlice);
+        const generatedChunks = chunkDocumentText({
+          bookId: doc.id,
+          userId,
+          text: bookSlice,
+          chapters: doc.chapters,
+        });
+        await indexDocumentChunks(generatedChunks.slice(0, 24));
       }
 
       const tutorResponse = await aiEngine.answerTutorQuestion({

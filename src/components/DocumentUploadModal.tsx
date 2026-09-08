@@ -77,20 +77,21 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
       if (user) await syncUserToFirestore(user).catch(console.error);
 
       setProgress(8);
-      const { text } = await extractPdfText(file, (pct) => {
-        setProgress(8 + Math.round(pct * 0.45));
+      const { text, pageCount } = await extractPdfText(file, (pct) => {
+        setProgress(8 + Math.round(pct * 0.55));
       });
       if (!text || text.replace(/\s/g, '').length < 80) {
         throw new Error(
           'This PDF has almost no selectable text. It may be a scanned image. Export a text-based PDF and try again.'
         );
       }
-      setProgress(58);
+      setProgress(70);
 
       const created = await api.analyzeDocument({
         fileName: file.name,
         fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
         text,
+        pageCount,
       });
       setProgress(82);
       await saveDocumentToFirestore(created).catch(console.error);

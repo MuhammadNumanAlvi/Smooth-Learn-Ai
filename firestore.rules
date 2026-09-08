@@ -46,6 +46,10 @@ service cloud.firestore {
       allow create, update: if isValidId(userId) && isOwnerOrAdmin(userId);
       allow delete: if isAdmin();
 
+      match /documents/{documentId} {
+        allow read, write: if isOwner(userId) && isValidId(documentId);
+      }
+
       match /quizSessions/{sessionId} {
         allow get: if isValidId(userId) && isValidId(sessionId) && isOwnerOrAdmin(userId);
         allow list: if isValidId(userId) && isOwnerOrAdmin(userId);

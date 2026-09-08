@@ -56,6 +56,8 @@ export const QuizConfigModal: React.FC<QuizConfigModalProps> = ({
     const stageTimer2 = setTimeout(() => setGenerationStage('Validating citations...'), 4000);
 
     try {
+      const { loadBookText, textForChapter } = await import('../lib/bookText');
+      const bookText = await loadBookText(activeDoc.id);
       const { quiz, session } = await api.generateQuiz({
         documentId: activeDoc.id,
         chapterTitle: chapterTitle || undefined,
@@ -64,6 +66,7 @@ export const QuizConfigModal: React.FC<QuizConfigModalProps> = ({
         difficulty,
         questionStyle,
         count: questionCount,
+        sourceText: textForChapter(bookText, chapterTitle),
       });
 
       clearTimeout(stageTimer1);

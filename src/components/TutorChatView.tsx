@@ -94,11 +94,14 @@ export const TutorChatView: React.FC<TutorChatViewProps> = ({ document }) => {
     setIsLoading(true);
 
     try {
+      const { loadBookText, textForChapter } = await import('../lib/bookText');
+      const bookText = await loadBookText(document.id);
       const response = await api.chatTutor({
         documentId: document.id,
         userQuestion: userMsg,
         messages: messages,
-        action: 'standard'
+        action: 'standard',
+        sourceText: textForChapter(bookText, undefined, 70000),
       });
       setMessages((prev) => [...prev, { role: 'assistant', content: response.reply }]);
     } catch (err: any) {

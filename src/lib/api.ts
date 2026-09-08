@@ -65,57 +65,31 @@ export const api = {
     fileName: string;
     text?: string;
     fileSize?: string;
+    pageCount?: number;
     pdfBase64?: string;
   }): Promise<DocumentItem> {
     const text = payload.text || '';
-    const CHUNK = 120000;
-    if (text.length > CHUNK) {
-      const chunkCount = Math.ceil(text.length / CHUNK);
-      const initRes = await fetch('/api/documents/analyze/init', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          fileName: payload.fileName,
-          fileSize: payload.fileSize,
-          chunkCount,
-          userId: auth.currentUser?.uid || 'default-user',
-        }),
-      });
-      const initJson = await parseApiJson(initRes);
-      if (!initJson.success) throw new Error(initJson.error || 'Failed to start upload');
-      const uploadId = initJson.data.uploadId;
-      for (let i = 0; i < chunkCount; i++) {
-        const piece = text.slice(i * CHUNK, (i + 1) * CHUNK);
-        const chunkRes = await fetch('/api/documents/analyze/chunk', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ uploadId, index: i, text: piece }),
-        });
-        const chunkJson = await parseApiJson(chunkRes);
-        if (!chunkJson.success) throw new Error(chunkJson.error || 'Failed to upload PDF text');
-      }
-      const doneRes = await fetch('/api/documents/analyze/complete', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ uploadId, userId: auth.currentUser?.uid || 'default-user' }),
-      });
-      const doneJson = await parseApiJson(doneRes);
-      if (!doneJson.success) throw new Error(doneJson.error || 'Failed to analyze document');
-      return doneJson.data;
-    }
-
-    const res = await fetch('/api/documents/analyze', {
+    const { guessChapters, saveBookText } = await import('./bookText');
+    const chapters = guessChapters(text);
+    const id = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await saveBookText(id, text);
+    const title = payload.fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    const res = await fetch('/api/documents/register', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
+        id,
         fileName: payload.fileName,
         fileSize: payload.fileSize,
-        text,
+        pageCount: payload.pageCount || 0,
+        title,
+        summary: text.slice(0, 240),
+        chapters,
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });
     const json = await parseApiJson(res);
-    if (!json.success) throw new Error(json.error || 'Failed to analyze document');
+    if (!json.success) throw new Error(json.error || 'Failed to save document');
     return json.data;
   },
 
@@ -157,6 +131,7 @@ export const api = {
     difficulty?: string;
     questionStyle?: string;
     count: number;
+    sourceText?: string;
   }): Promise<{ quiz: Quiz; session?: QuizSession }> {
     const res = await fetch('/api/quizzes/generate', {
       method: 'POST',
@@ -327,13 +302,15 @@ export const api = {
     return json.data;
   },
 
-  async getFlashcards(documentId: string, chapter?: { chapterId?: string; chapterTitle?: string }): Promise<Flashcard[]> {
-    const params = new URLSearchParams();
-    if (chapter?.chapterId) params.set('chapterId', chapter.chapterId);
-    if (chapter?.chapterTitle) params.set('chapterTitle', chapter.chapterTitle);
-    const qs = params.toString();
-    const res = await fetch(`/api/flashcards/${documentId}${qs ? `?${qs}` : ''}`, {
+  async getFlashcards(documentId: string, chapter?: { chapterId?: string; chapterTitle?: string; sourceText?: string }): Promise<Flashcard[]> {
+    const res = await fetch(`/api/flashcards/${documentId}`, {
+      method: 'POST',
       headers: getAuthHeaders(),
+      body: JSON.stringify({
+        chapterId: chapter?.chapterId,
+        chapterTitle: chapter?.chapterTitle,
+        sourceText: chapter?.sourceText,
+      }),
     });
     const json = await parseApiJson(res);
     if (!json.success) throw new Error(json.error || 'Failed to fetch flashcards');
@@ -376,6 +353,7 @@ export const api = {
     userQuestion: string;
     action?: 'explain_simpler' | 'give_example' | 'standard';
     conversationId?: string;
+    sourceText?: string;
   }): Promise<{
     reply: string;
     citations: string[];

@@ -35,9 +35,11 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({ document }) => {
       setIsFlipped(false);
       setCurrentIndex(0);
       try {
+        const { loadBookText, textForChapter } = await import('../lib/bookText');
+        const bookText = await loadBookText(document.id);
         const fetched = await api.getFlashcards(document.id, selectedChapter
-          ? { chapterId: selectedChapter.id, chapterTitle: selectedChapter.title }
-          : undefined);
+          ? { chapterId: selectedChapter.id, chapterTitle: selectedChapter.title, sourceText: textForChapter(bookText, selectedChapter.title) }
+          : { sourceText: textForChapter(bookText) });
         if (!cancelled) {
           setCards(fetched);
           await saveFlashcardsToFirestore(fetched).catch(() => {});
