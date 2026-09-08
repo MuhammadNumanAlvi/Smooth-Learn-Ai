@@ -5,26 +5,18 @@ import { db } from './server/db';
 import { getAdminEmail, isAdminEmail, isAdminIdentifier } from './server/admin';
 import { firestoreService } from './server/firestore';
 import { AISettings, DocumentItem, Quiz, QuizSession, QuizAttempt, Flashcard } from './src/types';
+import * as aiEngine from './server/aiEngine';
+import * as rag from './server/rag';
+import * as providers from './server/aiProviders';
 
-type AIEngine = typeof import('./server/aiEngine');
-type RagMod = typeof import('./server/rag');
-type ProvidersMod = typeof import('./server/aiProviders');
-
-let aiEngineMod: AIEngine | null = null;
-let ragMod: RagMod | null = null;
-let providersMod: ProvidersMod | null = null;
-
-async function loadAI(): Promise<AIEngine> {
-  if (!aiEngineMod) aiEngineMod = await import('./server/aiEngine');
-  return aiEngineMod;
+async function loadAI() {
+  return aiEngine;
 }
-async function loadRag(): Promise<RagMod> {
-  if (!ragMod) ragMod = await import('./server/rag');
-  return ragMod;
+async function loadRag() {
+  return rag;
 }
-async function loadProviders(): Promise<ProvidersMod> {
-  if (!providersMod) providersMod = await import('./server/aiProviders');
-  return providersMod;
+async function loadProviders() {
+  return providers;
 }
 
 dotenv.config();
