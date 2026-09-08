@@ -85,7 +85,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
 
     if (!appPromise) {
-      appPromise = import('../server').then(async (mod) => {
+      appPromise = import('../app').then(async (mod) => {
         const app = await mod.createApp();
         return app as unknown as ExpressApp;
       });
