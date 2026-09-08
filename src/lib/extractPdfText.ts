@@ -5,7 +5,7 @@ GlobalWorkerOptions.workerSrc = pdfWorker;
 
 export const MAX_PDF_BYTES = 25 * 1024 * 1024;
 /** Keep JSON under Vercel's ~4.5MB function body limit. */
-export const MAX_TEXT_CHARS = 3_200_000;
+export const MAX_TEXT_CHARS = 6_000_000;
 
 export async function extractPdfText(
   file: File,

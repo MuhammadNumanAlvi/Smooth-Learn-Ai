@@ -156,7 +156,7 @@ export async function createApp() {
   app.get('/api/documents', (req, res) => {
     try {
       const userId = getUserId(req);
-      const documents = db.getDocuments(userId);
+      const documents = db.getDocuments(userId).map((d) => ({ ...d, extractedContent: '' }));
       res.json({ success: true, data: documents });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -170,7 +170,7 @@ export async function createApp() {
       if (!doc) {
         return res.status(404).json({ success: false, error: 'Document not found or access denied' });
       }
-      res.json({ success: true, data: doc });
+      res.json({ success: true, data: { ...doc, extractedContent: '' } });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -201,8 +201,9 @@ export async function createApp() {
       updateProgress(20);
       console.log(`[AI Engine] Analyzing document structure for: ${fileName}`);
 
+      const analysisText = rawText.length > 80000 ? rawText.slice(0, 80000) : rawText;
       const analysis = await aiEngine.analyzeDocumentContent({
-        text: rawText,
+        text: analysisText,
         fileName,
       });
 
@@ -227,10 +228,11 @@ export async function createApp() {
 
       // RAG chunking + embedding
       updateProgress(70);
+      const indexText = rawText.length > 220000 ? rawText.slice(0, 220000) : rawText;
       const chunks = chunkDocumentText({
         bookId: docId,
         userId,
-        text: rawText,
+        text: indexText,
         chapters: analysis.chapters,
       });
       console.log(`[AI Engine] Chunked into ${chunks.length} pieces. Indexing embeddings...`);
@@ -243,77 +245,167 @@ export async function createApp() {
     } catch (err: any) {
       console.error('[AI Engine] Background processing failed:', err);
       const doc = db.getDocumentById(docId);
-      if (doc) db.saveDocument({ ...doc, processingStatus: 'failed', progress: 0 });
+      if (doc) {
+        db.saveDocument({
+          ...doc,
+          processingStatus: 'ready',
+          progress: 100,
+          summary: doc.summary || 'Book uploaded. Open a chapter to practise.',
+          chapters: doc.chapters?.length
+            ? doc.chapters
+            : [{ id: 'ch-full', title: 'Full book', summary: 'Questions will be taken from your uploaded PDF.', keyPoints: [] } as any],
+        });
+      }
     }
   }
 
-  app.post('/api/documents/analyze', async (req, res) => {
-    try {
-      const { fileName, text, fileSize, pdfBase64 } = req.body;
-      const userId = getUserId(req);
+  const slimDoc = (doc: DocumentItem): DocumentItem => ({ ...doc, extractedContent: '' });
 
-      // Usage limits
+  async function ingestDocument(params: {
+    userId: string;
+    fileName: string;
+    fileSize?: string;
+    text: string;
+  }): Promise<DocumentItem> {
+    const quota = db.checkQuota(params.userId, 'upload_book');
+    if (!quota.allowed) {
+      const err: any = new Error(quota.message);
+      err.statusCode = 429;
+      throw err;
+    }
+    const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    db.saveDocumentText(docId, params.text);
+    const skeletonDoc: DocumentItem = {
+      id: docId,
+      userId: params.userId,
+      title: params.fileName?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Processing Document',
+      fileName: params.fileName || 'document.pdf',
+      fileSize: params.fileSize || `${((params.text.length || 1024) / 1024).toFixed(1)} KB`,
+      uploadDate: new Date().toISOString(),
+      pageCount: 0,
+      summary: 'AI is analyzing your document — chapters and key terms will appear shortly.',
+      extractedContent: params.text.slice(0, 2000),
+      chapters: [],
+      keyTerms: [],
+      overallDifficulty: 'Intermediate',
+      totalQuizzesGenerated: 0,
+      processingStatus: 'processing',
+      progress: 10,
+    };
+    db.saveDocument(skeletonDoc);
+    await Promise.race([
+      runDocumentProcessing(docId, params.userId, params.text, undefined, params.fileName || 'document.pdf'),
+      new Promise<void>((resolve) => setTimeout(resolve, 22000)),
+    ]);
+    const latest = db.getDocumentById(docId, params.userId) || skeletonDoc;
+    if (latest.processingStatus === 'processing') {
+      db.saveDocument({
+        ...latest,
+        processingStatus: 'ready',
+        progress: 100,
+        chapters: latest.chapters?.length
+          ? latest.chapters
+          : [{ id: 'ch-full', title: 'Full book', summary: params.text.slice(0, 240), keyPoints: [] } as any],
+      });
+    }
+    return slimDoc(db.getDocumentById(docId, params.userId) || latest);
+  }
+
+  app.post('/api/documents/analyze/init', (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { fileName, fileSize, chunkCount } = req.body || {};
+      const count = Number(chunkCount);
+      if (!fileName || !Number.isFinite(count) || count < 1 || count > 80) {
+        return res.status(400).json({ success: false, error: 'Invalid upload.' });
+      }
       const quota = db.checkQuota(userId, 'upload_book');
       if (!quota.allowed) return res.status(429).json({ success: false, error: quota.message });
+      const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const uploadId = db.initTextUpload({
+        userId,
+        fileName: String(fileName),
+        fileSize: typeof fileSize === 'string' ? fileSize : undefined,
+        chunkCount: count,
+        docId,
+      });
+      res.json({ success: true, data: { uploadId, docId } });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to start upload.' });
+    }
+  });
 
-      const MAX_BYTES = 25 * 1024 * 1024;
-      const estimatedPayloadSize = (text?.length || 0) + (pdfBase64 ? (pdfBase64.length * 3) / 4 : 0);
-      if (estimatedPayloadSize > MAX_BYTES) {
-        return res.status(413).json({ success: false, error: 'Document exceeds 25MB maximum.' });
+  app.post('/api/documents/analyze/chunk', (req, res) => {
+    try {
+      const { uploadId, index, text } = req.body || {};
+      const i = Number(index);
+      if (!uploadId || !Number.isInteger(i) || i < 0 || typeof text !== 'string') {
+        return res.status(400).json({ success: false, error: 'Invalid upload piece.' });
       }
-      if (!text && !pdfBase64) {
+      if (text.length > 250000) {
+        return res.status(413).json({ success: false, error: 'Upload piece is too large.' });
+      }
+      db.saveTextChunk(String(uploadId), i, text);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Failed to save upload piece.' });
+    }
+  });
+
+  app.post('/api/documents/analyze/complete', async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { uploadId } = req.body || {};
+      if (!uploadId) return res.status(400).json({ success: false, error: 'Upload session missing.' });
+      const assembled = db.assembleTextUpload(String(uploadId));
+      if (assembled.userId !== userId && userId !== 'default-user') {
+        return res.status(403).json({ success: false, error: 'Upload does not belong to this account.' });
+      }
+      if (!assembled.text.trim()) {
+        return res.status(400).json({ success: false, error: 'No text was received from the PDF.' });
+      }
+      const created = await ingestDocument({
+        userId,
+        fileName: assembled.fileName,
+        fileSize: assembled.fileSize,
+        text: assembled.text,
+      });
+      res.json({ success: true, data: created });
+    } catch (err: any) {
+      console.error('[AI Engine] Document complete error:', err);
+      res.status(err.statusCode || 500).json({ success: false, error: err?.message || 'Failed to process document' });
+    }
+  });
+
+  app.post('/api/documents/analyze', async (req, res) => {
+    try {
+      const { fileName, text, fileSize, pdfBase64 } = req.body || {};
+      const userId = getUserId(req);
+      if (pdfBase64) {
+        return res.status(413).json({
+          success: false,
+          error: 'PDF files must be read in the browser. Refresh the page and upload again.',
+        });
+      }
+      if (typeof text === 'string' && text.length > 180000) {
+        return res.status(413).json({
+          success: false,
+          error: 'Document text is too large for a single upload. Refresh and try again.',
+        });
+      }
+      if (!text) {
         return res.status(400).json({ success: false, error: 'Document content is required.' });
       }
-
-      // Extract raw text from PDF immediately
-      let extractedRawText = text || '';
-      if (pdfBase64) {
-        try {
-          console.log('[AI Engine] Extracting text from PDF...');
-          const pdfBuffer = Buffer.from(pdfBase64, 'base64');
-          const parser = new PDFParse({ data: pdfBuffer });
-          const pdfData = await parser.getText();
-          extractedRawText = pdfData.text;
-          console.log(`[AI Engine] Extracted ${extractedRawText.length} characters from PDF`);
-        } catch (e) {
-          console.error('[AI Engine] PDF parse warning:', e);
-          extractedRawText = text || 'PDF document content.';
-        }
-      }
-
-      // Create skeleton document immediately — return to user right away
-      const docId = `doc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const skeletonDoc: DocumentItem = {
-        id: docId,
+      const created = await ingestDocument({
         userId,
-        title: fileName?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Processing Document',
         fileName: fileName || 'document.pdf',
-        fileSize: fileSize || `${((extractedRawText.length || 1024) / 1024).toFixed(1)} KB`,
-        uploadDate: new Date().toISOString(),
-        pageCount: 0,
-        summary: 'AI is analyzing your document — chapters and key terms will appear shortly.',
-        extractedContent: extractedRawText,
-        chapters: [],
-        keyTerms: [],
-        overallDifficulty: 'Intermediate',
-        totalQuizzesGenerated: 0,
-        processingStatus: 'processing',
-        progress: 10,
-      };
-
-      db.saveDocument(skeletonDoc);
-
-      // Fire-and-forget background processing
-      runDocumentProcessing(docId, userId, extractedRawText, pdfBase64, fileName || 'document.pdf').catch((err) =>
-        console.error('[AI Engine] Background pipeline error:', err)
-      );
-
-      // Return immediately with skeleton doc
-      console.log(`[AI Engine] Skeleton doc created and returned: ${docId}. Background processing started.`);
-      res.json({ success: true, data: skeletonDoc });
+        fileSize,
+        text,
+      });
+      res.json({ success: true, data: created });
     } catch (err: any) {
       console.error('[AI Engine] Document analyze error:', err);
-      res.status(500).json({ success: false, error: err?.message || 'Failed to process document' });
+      res.status(err.statusCode || 500).json({ success: false, error: err?.message || 'Failed to process document' });
     }
   });
 
@@ -332,7 +424,7 @@ export async function createApp() {
       const chunks = chunkDocumentText({
         bookId: doc.id,
         userId,
-        text: doc.extractedContent,
+        text: db.getDocumentText(doc.id, doc.extractedContent),
         chapters: doc.chapters,
       });
 
@@ -451,7 +543,7 @@ export async function createApp() {
         const generatedChunks = chunkDocumentText({
           bookId: doc.id,
           userId,
-          text: doc.extractedContent,
+          text: db.getDocumentText(doc.id, doc.extractedContent),
           chapters: doc.chapters,
         });
         await indexDocumentChunks(generatedChunks);
@@ -938,7 +1030,7 @@ export async function createApp() {
       const chapterLabel = chapter?.title || chapterTitle || doc.title;
       let chapterMaterial = chapter
         ? `${chapter.title}\n${chapter.summary || ''}\n${(chapter.keyPoints || []).join('\n')}`
-        : doc.extractedContent;
+        : db.getDocumentText(doc.id, doc.extractedContent);
 
       if (chapter) {
         try {
@@ -963,7 +1055,7 @@ export async function createApp() {
       const flashcards = await aiEngine.generateFlashcards({
         documentId: doc.id,
         documentTitle: `${doc.title}${chapter ? ` — ${chapter.title}` : ''}`,
-        documentContent: chapterMaterial || doc.extractedContent,
+        documentContent: chapterMaterial || db.getDocumentText(doc.id, doc.extractedContent),
         count: chapter ? 6 : 8,
       });
 

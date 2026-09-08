@@ -118,6 +118,22 @@ function ensureDbFile(): DatabaseSchema {
   }
 }
 
+function textsDir() {
+  const dir = path.join(DATA_DIR, 'texts');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function uploadsDir(uploadId: string) {
+  const dir = path.join(DATA_DIR, 'uploads', uploadId);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function textFile(id: string) {
+  return path.join(textsDir(), `${id}.txt`);
+}
+
 function saveDb(data: DatabaseSchema): void {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -177,6 +193,10 @@ export const db = {
     if (!doc.processingStatus) {
       doc.processingStatus = 'ready';
     }
+    if (doc.extractedContent && doc.extractedContent.length > 4000) {
+      db.saveDocumentText(doc.id, doc.extractedContent);
+      doc = { ...doc, extractedContent: doc.extractedContent.slice(0, 4000) };
+    }
     const index = data.documents.findIndex((d) => d.id === doc.id);
     if (index >= 0) {
       data.documents[index] = { ...data.documents[index], ...doc };
@@ -185,6 +205,67 @@ export const db = {
     }
     saveDb(data);
     return doc;
+  },
+
+  saveDocumentText(id: string, text: string): void {
+    fs.writeFileSync(textFile(id), text, 'utf-8');
+  },
+
+  getDocumentText(id: string, fallback = ''): string {
+    try {
+      const p = textFile(id);
+      if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8');
+    } catch {
+      // fall through
+    }
+    const doc = db.getDocumentById(id);
+    return doc?.extractedContent || fallback;
+  },
+
+  initTextUpload(meta: {
+    userId: string;
+    fileName: string;
+    fileSize?: string;
+    chunkCount: number;
+    docId: string;
+  }): string {
+    const uploadId = `up-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const dir = uploadsDir(uploadId);
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta), 'utf-8');
+    return uploadId;
+  },
+
+  saveTextChunk(uploadId: string, index: number, text: string): void {
+    const dir = path.join(DATA_DIR, 'uploads', uploadId);
+    if (!fs.existsSync(path.join(dir, 'meta.json'))) {
+      throw new Error('Upload session expired. Please try again.');
+    }
+    fs.writeFileSync(path.join(dir, `${index}.txt`), text, 'utf-8');
+  },
+
+  assembleTextUpload(uploadId: string): {
+    userId: string;
+    fileName: string;
+    fileSize?: string;
+    chunkCount: number;
+    docId: string;
+    text: string;
+  } {
+    const dir = path.join(DATA_DIR, 'uploads', uploadId);
+    const metaPath = path.join(dir, 'meta.json');
+    if (!fs.existsSync(metaPath)) {
+      throw new Error('Upload session expired. Please try again.');
+    }
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+    const parts: string[] = [];
+    for (let i = 0; i < meta.chunkCount; i++) {
+      const chunkPath = path.join(dir, `${i}.txt`);
+      if (!fs.existsSync(chunkPath)) {
+        throw new Error(`Missing upload piece ${i + 1} of ${meta.chunkCount}. Please try again.`);
+      }
+      parts.push(fs.readFileSync(chunkPath, 'utf-8'));
+    }
+    return { ...meta, text: parts.join('') };
   },
 
   deleteDocument(id: string, userId?: string): boolean {
@@ -208,6 +289,12 @@ export const db = {
     data.conversations = data.conversations.filter((c) => c.bookId !== id);
 
     saveDb(data);
+    try {
+      const p = textFile(id);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch {
+      // ignore missing text file
+    }
     return data.documents.length < initialLength;
   },
 

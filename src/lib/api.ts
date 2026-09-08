@@ -67,11 +67,50 @@ export const api = {
     fileSize?: string;
     pdfBase64?: string;
   }): Promise<DocumentItem> {
+    const text = payload.text || '';
+    const CHUNK = 120000;
+    if (text.length > CHUNK) {
+      const chunkCount = Math.ceil(text.length / CHUNK);
+      const initRes = await fetch('/api/documents/analyze/init', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          fileName: payload.fileName,
+          fileSize: payload.fileSize,
+          chunkCount,
+          userId: auth.currentUser?.uid || 'default-user',
+        }),
+      });
+      const initJson = await parseApiJson(initRes);
+      if (!initJson.success) throw new Error(initJson.error || 'Failed to start upload');
+      const uploadId = initJson.data.uploadId;
+      for (let i = 0; i < chunkCount; i++) {
+        const piece = text.slice(i * CHUNK, (i + 1) * CHUNK);
+        const chunkRes = await fetch('/api/documents/analyze/chunk', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ uploadId, index: i, text: piece }),
+        });
+        const chunkJson = await parseApiJson(chunkRes);
+        if (!chunkJson.success) throw new Error(chunkJson.error || 'Failed to upload PDF text');
+      }
+      const doneRes = await fetch('/api/documents/analyze/complete', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ uploadId, userId: auth.currentUser?.uid || 'default-user' }),
+      });
+      const doneJson = await parseApiJson(doneRes);
+      if (!doneJson.success) throw new Error(doneJson.error || 'Failed to analyze document');
+      return doneJson.data;
+    }
+
     const res = await fetch('/api/documents/analyze', {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({
-        ...payload,
+        fileName: payload.fileName,
+        fileSize: payload.fileSize,
+        text,
         userId: auth.currentUser?.uid || 'default-user',
       }),
     });

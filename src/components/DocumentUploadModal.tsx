@@ -189,7 +189,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({ isOpen
                   <Zap className="w-8 h-8 text-teal-500" />
                 </div>
               </div>
-              <h4 className="text-lg font-bold text-gray-900 mb-2">Reading your PDF…</h4>
+              <h4 className="text-lg font-bold text-gray-900 mb-2">Uploading your book…</h4>
               <p className="text-sm text-gray-500 mb-6 max-w-[280px]">
                 <AnimatePresence mode="wait">
                   <motion.span key={factIndex} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="block">
