@@ -225,6 +225,83 @@ function isQuizGenerate(pathname: string): boolean {
   );
 }
 
+function flashcardDocumentId(pathname: string): string | null {
+  const match = pathname.match(/^\/(?:api\/)?flashcards\/([^/]+)$/);
+  if (!match) return null;
+  const id = decodeURIComponent(match[1]);
+  if (!id || id === 'update') return null;
+  return id;
+}
+
+function isFlashcardUpdate(pathname: string): boolean {
+  return pathname === '/api/flashcards/update' || pathname === '/flashcards/update';
+}
+
+function normalizeFlashcards(raw: any[], fallbackTopic?: string): Array<{ front: string; back: string; topic: string; hint?: string }> {
+  const out: Array<{ front: string; back: string; topic: string; hint?: string }> = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const front = String(item.front || item.question || '').trim();
+    const back = String(item.back || item.answer || '').trim();
+    if (front.length < 3 || back.length < 3) continue;
+    const sig = front.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 36);
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push({
+      front,
+      back,
+      topic: String(item.topic || fallbackTopic || 'Core concept').trim(),
+      hint: String(item.hint || '').trim() || undefined,
+    });
+  }
+  return out;
+}
+
+function buildFlashcardPrompt(params: { count: number; sourceText: string; documentTitle: string; chapterTitle?: string }): string {
+  return `You are a memory specialist. Generate exactly ${params.count} high-quality spaced-repetition flashcards. Respond ONLY with a valid JSON array.
+
+Document: ${params.documentTitle}${params.chapterTitle ? ` — ${params.chapterTitle}` : ''}
+Content:
+${params.sourceText}
+
+Return a JSON array:
+[{"front":"Clear question/prompt","back":"Precise answer/explanation","topic":"sub-topic","hint":"memory cue"}]
+
+Rules:
+1. Ground every card in the content above.
+2. Front should be a short prompt, not a paragraph.
+3. Back should be a precise answer.
+4. No duplicate fronts.`;
+}
+
+async function generateFlashcardItems(params: {
+  sourceText: string;
+  count: number;
+  documentTitle: string;
+  chapterTitle?: string;
+}): Promise<Array<{ front: string; back: string; topic: string; hint?: string }>> {
+  const prompt = buildFlashcardPrompt(params);
+  let lastError = 'AI generation failed';
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const parsed = await generateWithGroq(prompt, params.count);
+      const cards = normalizeFlashcards(Array.isArray(parsed) ? parsed : [], params.chapterTitle);
+      if (cards.length) return cards.slice(0, params.count);
+      lastError = 'Groq returned no valid flashcards';
+    } catch (err: any) {
+      lastError = err?.message || lastError;
+    }
+  }
+  if (process.env.GEMINI_API_KEY) {
+    const parsed = await generateWithGemini(prompt);
+    const cards = normalizeFlashcards(Array.isArray(parsed) ? parsed : [], params.chapterTitle);
+    if (cards.length) return cards.slice(0, params.count);
+    throw new Error('Gemini returned no valid flashcards');
+  }
+  throw new Error(lastError);
+}
+
 async function handleRegister(req: IncomingMessage, res: ServerResponse) {
   const body = await readJsonBody(req);
   const fileName = String(body.fileName || 'document.pdf');
@@ -325,6 +402,69 @@ async function handleQuiz(req: IncomingMessage, res: ServerResponse) {
   return sendJson(res, 200, { success: true, data: quiz, session });
 }
 
+async function handleFlashcards(req: IncomingMessage, res: ServerResponse, documentId: string) {
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return sendJson(res, 405, { success: false, error: 'Use POST to generate flashcards.' });
+  }
+  const body = req.method === 'POST' ? await readJsonBody(req) : {};
+  const sourceText = String(body.sourceText || '').trim();
+  if (sourceText.length < 80) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'Book text was not found on this device. Open the book again, then open Flashcards.',
+    });
+  }
+  const chapterId = String(body.chapterId || '').trim() || undefined;
+  const chapterTitle = String(body.chapterTitle || '').trim() || undefined;
+  const documentTitle = String(body.documentTitle || 'Study material').trim();
+  const userId = userIdOf(req, body);
+  const count = chapterTitle ? 6 : 8;
+  const items = await generateFlashcardItems({
+    sourceText: sourceText.slice(0, 15000),
+    count,
+    documentTitle,
+    chapterTitle,
+  });
+  const cards = items.map((card, i) => ({
+    id: `fc-${Date.now()}-${chapterId || 'all'}-${i}`,
+    userId,
+    documentId,
+    documentTitle,
+    front: card.front,
+    back: card.back,
+    topic: card.topic || chapterTitle || documentTitle,
+    chapterId,
+    chapterTitle,
+    hint: card.hint,
+    masteryLevel: 'new',
+    reviewCount: 0,
+  }));
+  return sendJson(res, 200, { success: true, data: cards });
+}
+
+async function handleFlashcardUpdate(req: IncomingMessage, res: ServerResponse) {
+  const body = await readJsonBody(req);
+  const id = String(body.id || '').trim();
+  const status = String(body.status || 'learning');
+  if (!id) {
+    return sendJson(res, 400, { success: false, error: 'Flashcard id is required.' });
+  }
+  return sendJson(res, 200, {
+    success: true,
+    data: {
+      id,
+      documentId: String(body.documentId || ''),
+      documentTitle: String(body.documentTitle || ''),
+      front: String(body.front || ''),
+      back: String(body.back || ''),
+      topic: String(body.topic || ''),
+      masteryLevel: ['new', 'learning', 'mastered'].includes(status) ? status : 'learning',
+      reviewCount: 1,
+      lastReviewed: new Date().toISOString(),
+    },
+  });
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const pathname = pathOf(req);
   try {
@@ -340,6 +480,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
     if (isQuizGenerate(pathname)) {
       return await handleQuiz(req, res);
+    }
+    if (isFlashcardUpdate(pathname)) {
+      return await handleFlashcardUpdate(req, res);
+    }
+    const flashcardDocId = flashcardDocumentId(pathname);
+    if (flashcardDocId) {
+      return await handleFlashcards(req, res, flashcardDocId);
     }
     return sendJson(res, 404, { success: false, error: `No API route for ${pathname}` });
   } catch (err: any) {

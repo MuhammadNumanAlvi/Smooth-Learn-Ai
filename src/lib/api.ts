@@ -336,7 +336,7 @@ export const api = {
     return json.data;
   },
 
-  async getFlashcards(documentId: string, chapter?: { chapterId?: string; chapterTitle?: string; sourceText?: string }): Promise<Flashcard[]> {
+  async getFlashcards(documentId: string, chapter?: { chapterId?: string; chapterTitle?: string; sourceText?: string; documentTitle?: string }): Promise<Flashcard[]> {
     const res = await fetch(`/api/flashcards/${documentId}`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -344,6 +344,7 @@ export const api = {
         chapterId: chapter?.chapterId,
         chapterTitle: chapter?.chapterTitle,
         sourceText: chapter?.sourceText,
+        documentTitle: chapter?.documentTitle,
       }),
     });
     const json = await parseApiJson(res);

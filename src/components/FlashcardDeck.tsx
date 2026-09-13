@@ -15,6 +15,8 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({ document }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const selectedChapter = useMemo(
     () => chapters.find((c) => c.id === selectedChapterId) || chapters[0],
@@ -32,21 +34,33 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({ document }) => {
     const load = async () => {
       if (!document.id) return;
       setLoading(true);
+      setError(null);
       setIsFlipped(false);
       setCurrentIndex(0);
       try {
         const { loadBookText, textForChapter } = await import('../lib/bookText');
         const bookText = await loadBookText(document.id);
+        if (!bookText.trim()) {
+          throw new Error('This book text is not available in this browser. Open the book from the device where you uploaded it, or upload it again.');
+        }
         const fetched = await api.getFlashcards(document.id, selectedChapter
-          ? { chapterId: selectedChapter.id, chapterTitle: selectedChapter.title, sourceText: textForChapter(bookText, selectedChapter.title) }
-          : { sourceText: textForChapter(bookText) });
+          ? {
+              chapterId: selectedChapter.id,
+              chapterTitle: selectedChapter.title,
+              documentTitle: document.title,
+              sourceText: textForChapter(bookText, selectedChapter.title),
+            }
+          : { documentTitle: document.title, sourceText: textForChapter(bookText) });
         if (!cancelled) {
           setCards(fetched);
           await saveFlashcardsToFirestore(fetched).catch(() => {});
         }
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) setCards([]);
+      } catch (err: any) {
+        console.error(err);
+        if (!cancelled) {
+          setCards([]);
+          setError(err?.message || 'Failed to generate flashcards.');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -55,7 +69,7 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({ document }) => {
     return () => {
       cancelled = true;
     };
-  }, [document.id, selectedChapter?.id, selectedChapter?.title]);
+  }, [document.id, selectedChapter?.id, selectedChapter?.title, reloadKey]);
 
   const handleSelectChapter = (chapter: ChapterItem) => {
     if (chapter.id === selectedChapterId) return;
@@ -128,10 +142,19 @@ export const FlashcardDeck: React.FC<FlashcardDeckProps> = ({ document }) => {
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">No cards in this chapter</h3>
             <p className="text-sm text-gray-500">
-              {selectedChapter
-                ? `We could not generate flashcards for "${selectedChapter.title}" yet.`
-                : 'Select a chapter from the left to study its cards.'}
+              {error
+                ? error
+                : selectedChapter
+                  ? `We could not generate flashcards for "${selectedChapter.title}" yet.`
+                  : 'Select a chapter from the left to study its cards.'}
             </p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((n) => n + 1)}
+              className="mt-4 px-5 py-2.5 rounded-full bg-gray-900 text-white text-xs font-bold"
+            >
+              Try again
+            </button>
           </div>
         ) : (
           <>
