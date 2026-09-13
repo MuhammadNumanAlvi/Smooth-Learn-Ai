@@ -267,6 +267,7 @@ export async function generateRagQuizQuestions(params: { apiKey?: string;
   questionCount: number;
   difficulty: QuizDifficulty;
   questionStyle?: QuestionStyle;
+  sourceText?: string;
 }): Promise<{ questions: QuizQuestion[]; sourceReferences: SourceReference[] }> {
   // 1. Semantic RAG Retrieval respecting user scope & UID ownership
   const retrieval = await retrieveRelevantContext({
@@ -278,6 +279,7 @@ export async function generateRagQuizQuestions(params: { apiKey?: string;
     sectionId: params.sectionId,
     topic: params.topic,
     topK: Math.min(10, Math.max(4, Math.ceil(params.questionCount * 1.5))),
+    sourceText: params.sourceText,
   });
 
   if (!retrieval.hasSufficientMaterial) {

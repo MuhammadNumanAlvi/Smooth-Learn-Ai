@@ -203,6 +203,7 @@ export async function groqGenerateQuizQuestions(params: {
   questionCount: number;
   difficulty: QuizDifficulty;
   questionStyle?: QuestionStyle;
+  sourceText?: string;
 }): Promise<{ questions: QuizQuestion[]; sourceReferences: SourceReference[] }> {
   const retrieval = await retrieveRelevantContext({
     userId: params.userId,
@@ -213,6 +214,7 @@ export async function groqGenerateQuizQuestions(params: {
     sectionId: params.sectionId,
     topic: params.topic,
     topK: Math.min(10, Math.max(4, Math.ceil(params.questionCount * 1.5))),
+    sourceText: params.sourceText,
   });
 
   if (!retrieval.hasSufficientMaterial) {

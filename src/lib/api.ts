@@ -34,8 +34,8 @@ async function parseApiJson(res: Response): Promise<any> {
     if (res.status === 413 || lower.includes('request entity') || lower.includes('too large')) {
       throw new Error('This PDF is too large to send as a file. Maximum size is 25MB. Refresh the page and try again — text is now extracted in your browser.');
     }
-    if (res.status >= 500 || lower.startsWith('a server')) {
-      throw new Error('Server error. Please wait a moment and try again.');
+    if (res.status >= 500 || lower.startsWith('a server') || lower.includes('function_invocation')) {
+      throw new Error('Quiz service is restarting. Wait a few seconds and try Generate Quiz again.');
     }
     throw new Error(text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || 'Unexpected server response.');
   }
@@ -155,6 +155,8 @@ export const api = {
   // Real RAG MCQ Quiz Generation
   async generateQuiz(payload: {
     documentId: string;
+    documentTitle?: string;
+    chapters?: DocumentItem['chapters'];
     chapterTitle?: string;
     chapterId?: string;
     sectionId?: string;

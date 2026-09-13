@@ -303,6 +303,7 @@ export async function retrieveRelevantContext(params: { apiKey?: string;
   topic?: string;
   topK?: number;
   chapters?: Array<Pick<ChapterItem, 'id' | 'title'>>;
+  sourceText?: string;
 }): Promise<{
   chunks: DocumentChunk[];
   sourceReferences: SourceReference[];
@@ -338,6 +339,19 @@ export async function retrieveRelevantContext(params: { apiKey?: string;
 
   // Check if chunks exist
   if (!chunks || chunks.length === 0) {
+    const fallback = (params.sourceText || '').trim();
+    if (fallback.length > 80) {
+      const contextText = fallback.slice(0, 24000);
+      return {
+        chunks: [],
+        sourceReferences: [{
+          chapter: chapterTitle || 'General',
+          excerpt: contextText.slice(0, 140),
+        }],
+        contextText,
+        hasSufficientMaterial: true,
+      };
+    }
     console.warn(`[QuizMind RAG] retrieveRelevantContext: No chunks found for book ${params.bookId} (chapterId: ${params.chapterId}, chapterTitle: ${params.chapterTitle})`);
     return {
       chunks: [],

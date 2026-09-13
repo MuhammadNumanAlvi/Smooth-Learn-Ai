@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { createApp } from '../app';
 
 type ExpressApp = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -86,7 +85,11 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     }
 
     if (!appPromise) {
-      appPromise = createApp().then((app) => app as unknown as ExpressApp);
+      // Vercel cannot execute root app.ts. The build emits server/app.bundle.mjs.
+      appPromise = import('../server/app.bundle.mjs').then(async (mod) => {
+        const app = await mod.createApp();
+        return app as unknown as ExpressApp;
+      });
     }
     const app = await appPromise;
     app(req, res);

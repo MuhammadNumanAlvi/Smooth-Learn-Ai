@@ -563,9 +563,41 @@ export async function createApp() {
       sourceText,
     } = req.body;
 
-    const doc = db.getDocumentById(documentId, userId);
+    const clientText = typeof sourceText === 'string' ? sourceText.trim() : '';
+    let doc = documentId ? db.getDocumentById(documentId, userId) : undefined;
     if (!doc) {
-      return res.status(404).json({ success: false, error: 'Target document not found or access denied' });
+      if (clientText.length < 80) {
+        return res.status(404).json({
+          success: false,
+          error: 'Book text was not found on this device. Open the book again, then generate the quiz.',
+        });
+      }
+      const title = String(req.body.documentTitle || req.body.title || 'Study material');
+      const chapters = Array.isArray(req.body.chapters) && req.body.chapters.length
+        ? req.body.chapters
+        : [{ id: 'ch-full', title: 'Full book', summary: '', keyPoints: [], estimatedReadTime: '30 min' }];
+      doc = {
+        id: String(documentId || `doc-${Date.now()}`),
+        userId,
+        title,
+        fileName: String(req.body.fileName || `${title}.pdf`),
+        fileSize: '',
+        uploadDate: new Date().toISOString(),
+        pageCount: Number(req.body.pageCount) || 0,
+        summary: clientText.slice(0, 240),
+        extractedContent: '',
+        chapters,
+        keyTerms: [],
+        overallDifficulty: 'Intermediate',
+        totalQuizzesGenerated: 0,
+        processingStatus: 'ready',
+        progress: 100,
+      };
+      try {
+        db.saveDocument(doc);
+      } catch {
+        // Vercel /tmp is optional; quiz uses sourceText from the client.
+      }
     }
 
     // Server-side request locking to prevent duplicate creation from rapid button clicks
@@ -616,6 +648,7 @@ export async function createApp() {
         questionCount,
         difficulty: difficulty || 'Medium',
         questionStyle: questionStyle || 'Mixed',
+        sourceText: clientText,
       });
 
       const quizId = `quiz-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;

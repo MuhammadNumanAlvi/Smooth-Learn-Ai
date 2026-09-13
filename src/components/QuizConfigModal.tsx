@@ -58,8 +58,13 @@ export const QuizConfigModal: React.FC<QuizConfigModalProps> = ({
     try {
       const { loadBookText, textForChapter } = await import('../lib/bookText');
       const bookText = await loadBookText(activeDoc.id);
+      if (!bookText.trim()) {
+        throw new Error('This book text is not available in this browser. Open the book from the device where you uploaded it, or upload it again.');
+      }
       const { quiz, session } = await api.generateQuiz({
         documentId: activeDoc.id,
+        documentTitle: activeDoc.title,
+        chapters: activeDoc.chapters,
         chapterTitle: chapterTitle || undefined,
         topic: topic.trim() || undefined,
         questionType: 'multiple_choice',

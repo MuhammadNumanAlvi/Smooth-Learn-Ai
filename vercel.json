@@ -1,5 +1,5 @@
 {
-  "buildCommand": "vite build",
+  "buildCommand": "vite build && npm run bundle:server",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
@@ -9,7 +9,7 @@
     "api/index.ts": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{app.ts,server.ts,src/types.ts,server/**}"
+      "includeFiles": "server/**"
     }
   }
 }

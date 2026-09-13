@@ -11,4 +11,5 @@ data/quizmind.json
 data/student-unlock.json
 scratch_check.ts
 scratch_*.ts
+server/app.bundle.mjs
 .cursorrules
