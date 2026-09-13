@@ -1,15 +1,21 @@
 {
-  "buildCommand": "vite build && npm run bundle:server",
+  "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/api/health", "destination": "/api/health" },
+    { "source": "/api/quizzes/generate", "destination": "/api" },
+    { "source": "/api/quiz/generate", "destination": "/api" },
     { "source": "/api/:path*", "destination": "/api" },
     { "source": "/:path*", "destination": "/index.html" }
   ],
   "functions": {
+    "api/health.ts": {
+      "maxDuration": 10,
+      "memory": 256
+    },
     "api/index.ts": {
       "maxDuration": 60,
-      "memory": 1024,
-      "includeFiles": "server/**"
+      "memory": 1024
     }
   }
 }
